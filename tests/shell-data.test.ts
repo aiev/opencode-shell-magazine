@@ -2,6 +2,8 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import {
   durationOf,
+  collectSubSessions,
+  countRunningShells,
   entryFromShellInfo,
   entryFromShellMessage,
   entryFromToolPart,
@@ -120,4 +122,45 @@ test("normalizeShellStatus / tailLines / durationOf", () => {
     time: { started: 1000, completed: 3000 },
   })
   assert.equal(durationOf(e, 9999), 2000)
+})
+
+test("collectSubSessions finds subagent child sessions with their agent names", () => {
+  const refs = collectSubSessions([
+    {
+      type: "assistant",
+      content: [
+        {
+          type: "tool",
+          name: "subagent",
+          id: "call_1",
+          state: { input: { agent: "bud-testrunner", prompt: "x" }, metadata: { sessionID: "ses_child1" } },
+        },
+        { type: "tool", name: "shell", id: "call_2", state: { input: { command: "ls" }, metadata: {} } },
+      ],
+    },
+    {
+      type: "assistant",
+      content: [
+        { type: "tool", name: "task", id: "call_3", metadata: { session_id: "ses_child2" }, state: { input: {} } },
+        // Duplicate child sessions are reported once.
+        { type: "tool", name: "subagent", id: "call_4", state: { input: { subagent_type: "explore" }, metadata: { sessionID: "ses_child1" } } },
+      ],
+    },
+    { type: "user", content: [{ type: "text", text: "hi" }] },
+  ])
+  assert.deepEqual(refs, [
+    { id: "ses_child1", agent: "bud-testrunner" },
+    { id: "ses_child2", agent: undefined },
+  ])
+})
+
+test("countRunningShells counts only running shells of the session (plus opted-in subagents)", () => {
+  const shells = [
+    { id: "sh_1", status: "running", command: "a", metadata: { sessionID: "ses_root" }, time: { started: 1 } },
+    { id: "sh_2", status: "exited", command: "b", metadata: { sessionID: "ses_root" }, time: { started: 1 } },
+    { id: "sh_3", status: "running", command: "c", metadata: { sessionID: "ses_child" }, time: { started: 1 } },
+    { id: "sh_4", status: "running", command: "d", metadata: { sessionID: "ses_other" }, time: { started: 1 } },
+  ]
+  assert.equal(countRunningShells(shells as never, "ses_root"), 1)
+  assert.equal(countRunningShells(shells as never, "ses_root", new Set(["ses_child"])), 2)
 })

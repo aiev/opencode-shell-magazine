@@ -21,7 +21,7 @@ import { SESSION_DATA_KEY, SETTING_KEYS, updateSessionData } from "../core/kv"
 import type { ShellPanelApi, ShellInfoLike } from "./api"
 import { clearTick } from "./store"
 import { entryKey, findShellEntryKey, mergeShellEntry } from "./entry-map"
-import { durationOf, entryFromShellInfo, isTerminal, scanShellEntries, tailLines } from "./shell-data"
+import { collectSubSessions, durationOf, entryFromShellInfo, isTerminal, scanShellEntries, tailLines, type SubSessionRef } from "./shell-data"
 import { PLUGIN_VERSION } from "../_version"
 
 /** Entry row prefix: expand arrow + space + status dot + space */
@@ -49,6 +49,8 @@ export function ShellPanel(props: {
   showEntryTime: () => boolean
   showEntryCwd: () => boolean
   showEntryExit: () => boolean
+  showSubagents: () => boolean
+  border: () => boolean
   timeFormat: () => TimeFormat
   notifyOnFinish: () => boolean
   notifyThresholdMs: () => number
@@ -96,11 +98,14 @@ export function ShellPanel(props: {
       success: desaturateTo(th.success, MAX_SAT, FALLBACK.success),
       warning: desaturateTo(th.warning, MAX_SAT, FALLBACK.warning),
       error: desaturateTo(th.error, MAX_SAT, FALLBACK.error),
+      border: desaturateTo(th.border, MAX_SAT, FALLBACK.border),
     }
   }
 
   const panelWidth = () => Math.max(20, panelWidthSignal())
-  const sep = () => "\u2500".repeat(panelWidth())
+  /** Border + horizontal padding consume this much of the measured box width. */
+  const gutter = () => (props.border() ? 6 : 0)
+  const sep = () => "\u2500".repeat(Math.max(1, panelWidth() - gutter()))
 
   const firstLine = (s: string) => (s.split("\n")[0] ?? "").trim()
 
@@ -136,7 +141,7 @@ export function ShellPanel(props: {
   }
 
   const expandedPad = (label: string) => " ".repeat(Math.max(1, 10 - visualWidth(label)))
-  const expandedValAvail = () => Math.max(10, panelWidth() - 4 - 12)
+  const expandedValAvail = () => Math.max(10, panelWidth() - gutter() - 4 - 12)
 
   const durationOfEntry = (e: ShellEntry) => durationOf(e, now())
 
@@ -172,6 +177,7 @@ export function ShellPanel(props: {
       const next = new Map(prev)
       for (const [k, e] of next) {
         if (!isTerminal(e.status) || e.notified) continue
+        if (e.agent !== undefined && !props.showSubagents()) continue
         if (suppressed.has(k)) {
           next.set(k, { ...e, notified: true })
           changed = true
@@ -206,7 +212,7 @@ export function ShellPanel(props: {
           // Registry record for a command whose history entry never carried a
           // shellID (host cache gap): adopt that entry instead of duplicating it.
           for (const [key, e] of next) {
-            if (e.shellID || e.status !== "running" || e.source !== inc.source) continue
+            if (e.shellID || e.status !== "running" || e.source !== inc.source || e.agent !== inc.agent) continue
             if (e.command.trim() !== inc.command.trim()) continue
             k = key
             break
@@ -216,7 +222,7 @@ export function ShellPanel(props: {
           // History entry for a shell already tracked through the registry: same
           // command started around the same time = the same execution, adopt it.
           for (const [key, e] of next) {
-            if (!e.shellID || e.source !== inc.source) continue
+            if (!e.shellID || e.source !== inc.source || e.agent !== inc.agent) continue
             if (e.command.trim() !== inc.command.trim()) continue
             if (e.startedAt === undefined || inc.startedAt === undefined) continue
             if (Math.abs(e.startedAt - inc.startedAt) > 10_000) continue
@@ -238,6 +244,64 @@ export function ShellPanel(props: {
       queuePersist()
       checkNotifications()
     }
+  }
+
+  // ── Subagent sessions (descendants) ──
+  /** Descendant session id → agent name ("" when unknown); rebuilt from history. */
+  let subSessions = new Map<string, string>()
+  let subSessionsAt = 0
+
+  /** Cheap refresh: direct children referenced by the root session's history (throttled). */
+  const refreshSubSessions = (force: boolean) => {
+    if (!props.showSubagents()) {
+      if (subSessions.size > 0) subSessions = new Map()
+      return
+    }
+    const nowMs = Date.now()
+    if (!force && nowMs - subSessionsAt < 5000) return
+    subSessionsAt = nowMs
+    const map = new Map<string, string>()
+    for (const ref of collectSubSessions(props.api.session.messages(props.sessionId) ?? [])) {
+      if (ref.id && ref.id !== props.sessionId) map.set(ref.id, ref.agent ?? "")
+    }
+    subSessions = map
+  }
+
+  /** Full history scan: root session + descendant sessions (BFS, depth-limited), tagged with the agent. */
+  const scanAll = (): ShellEntry[] => {
+    const rootMsgs = props.api.session.messages(props.sessionId) ?? []
+    const entries = scanShellEntries(rootMsgs)
+    if (!props.showSubagents()) {
+      subSessions = new Map()
+      subSessionsAt = Date.now()
+      return entries
+    }
+    const map = new Map<string, string>()
+    const seen = new Set<string>()
+    let frontier = collectSubSessions(rootMsgs)
+    for (let depth = 0; depth < 4 && frontier.length > 0; depth++) {
+      const next: SubSessionRef[] = []
+      for (const ref of frontier) {
+        if (!ref.id || seen.has(ref.id) || ref.id === props.sessionId) continue
+        seen.add(ref.id)
+        map.set(ref.id, ref.agent ?? "")
+        const msgs = props.api.session.messages(ref.id) ?? []
+        for (const e of scanShellEntries(msgs)) entries.push({ ...e, agent: ref.agent ?? "" })
+        next.push(...collectSubSessions(msgs))
+      }
+      frontier = next
+    }
+    subSessions = map
+    subSessionsAt = Date.now()
+    return entries
+  }
+
+  /** Whether a shell record belongs to this panel: the own session or an included subagent session. */
+  const ownsShellSession = (sid: string): boolean => {
+    if (sid === props.sessionId) return true
+    if (!props.showSubagents()) return false
+    if (!subSessions.has(sid)) refreshSubSessions(false)
+    return subSessions.has(sid)
   }
 
   const loadOutput = async (e: ShellEntry) => {
@@ -263,6 +327,7 @@ export function ShellPanel(props: {
     setEntryMap((prev) => {
       const next = new Map(prev)
       for (const [k, e] of next) {
+        if (e.agent !== undefined && !props.showSubagents()) continue
         if (e.status !== "running") continue
         if (e.shellID) {
           if (present.has(e.shellID)) continue
@@ -282,6 +347,7 @@ export function ShellPanel(props: {
         if (e.shellID !== undefined) continue
         const twin = tracked.find((t) =>
           t.source === e.source &&
+          t.agent === e.agent &&
           t.command.trim() === e.command.trim() &&
           t.startedAt !== undefined && e.startedAt !== undefined &&
           Math.abs(t.startedAt - e.startedAt) <= 10_000)
@@ -302,16 +368,22 @@ export function ShellPanel(props: {
   const syncRegistry = async () => {
     const ok = await props.api.shell.sync()
     if (!ok) return
+    refreshSubSessions(false)
+    const includeSub = props.showSubagents()
     const map = untrack(entryMap)
     const present = new Set<string>()
     const liveCommands = new Set<string>()
     const entries: ShellEntry[] = []
     for (const s of props.api.shell.list()) {
-      if (String((s.metadata ?? {}).sessionID ?? "") !== props.sessionId) continue
+      const sid = String((s.metadata ?? {}).sessionID ?? "")
+      const isRoot = sid === props.sessionId
+      if (!isRoot && !(includeSub && subSessions.has(sid))) continue
       present.add(s.id)
       if (s.command) liveCommands.add(String(s.command).trim())
       const k = findShellEntryKey(map, { id: s.id, shellID: s.id } as ShellEntry)
-      entries.push(entryFromShellInfo(s, k ? map.get(k) : undefined))
+      const entry = entryFromShellInfo(s, k ? map.get(k) : undefined)
+      if (!isRoot) entry.agent = subSessions.get(sid) ?? ""
+      entries.push(entry)
     }
     registryReady = true
     const firstSync = !suppressedRegistry
@@ -345,23 +417,29 @@ export function ShellPanel(props: {
   onMount(() => {
     void (async () => {
       await syncRegistry()
-      applyEntries(scanShellEntries(props.api.session.messages(props.sessionId) ?? []), { fromScan: true })
+      applyEntries(scanAll(), { fromScan: true })
       const exp = untrack(expandedEntry)
       if (exp?.shellID && exp.status === "running") void loadOutput(exp)
     })()
 
+    /** Tag entries coming from a descendant session with the owning agent. */
+    const withAgent = (sid: string, entry: ShellEntry): ShellEntry => {
+      if (sid !== props.sessionId) entry.agent = subSessions.get(sid) ?? ""
+      return entry
+    }
+
     const offStarted = props.api.shell.onStarted((ev) => {
-      if (ev.sessionID !== props.sessionId) return
+      if (!ownsShellSession(ev.sessionID)) return
       suppressed.delete(ev.shell.id)
       const map = untrack(entryMap)
       const k = findShellEntryKey(map, { id: ev.shell.id, shellID: ev.shell.id } as ShellEntry)
-      applyEntries([entryFromShellInfo(ev.shell, k ? map.get(k) : undefined)])
+      applyEntries([withAgent(ev.sessionID, entryFromShellInfo(ev.shell, k ? map.get(k) : undefined))])
     })
     const offEnded = props.api.shell.onEnded((ev) => {
-      if (ev.sessionID !== props.sessionId) return
+      if (!ownsShellSession(ev.sessionID)) return
       const map = untrack(entryMap)
       const k = findShellEntryKey(map, { id: ev.shell.id, shellID: ev.shell.id } as ShellEntry)
-      const entry = entryFromShellInfo(ev.shell, k ? map.get(k) : undefined)
+      const entry = withAgent(ev.sessionID, entryFromShellInfo(ev.shell, k ? map.get(k) : undefined))
       if (ev.output?.output) {
         entry.output = ev.output.output
         entry.truncated = ev.output.truncated
@@ -396,7 +474,8 @@ export function ShellPanel(props: {
 
   // ── Sorting / paging ──
   const sorted = createMemo(() => {
-    const list = [...entryMap().values()]
+    const showSub = props.showSubagents()
+    const list = [...entryMap().values()].filter((e) => showSub || e.agent === undefined)
     list.sort((a, b) => (props.sortOrder() === "asc" ? a.startedAt - b.startedAt : b.startedAt - a.startedAt))
     return list
   })
@@ -406,13 +485,20 @@ export function ShellPanel(props: {
   const visibleList = createMemo(() => sorted().slice(scrollOffset(), scrollOffset() + max()))
   const anyEntry = createMemo(() => entryMap().size > 0)
   const summary = createMemo(() => {
+    const showSub = props.showSubagents()
+    const nowMs = now()
     let running = 0
     let failed = 0
+    let total = 0
+    let elapsed = 0
     for (const e of entryMap().values()) {
+      if (!showSub && e.agent !== undefined) continue
+      total++
+      elapsed += durationOf(e, nowMs)
       if (e.status === "running") running++
       else if (e.status === "error" || e.status === "timeout" || e.status === "killed" || (e.status === "exited" && e.exit !== undefined && e.exit !== 0)) failed++
     }
-    return { running, failed, total: entryMap().size }
+    return { running, failed, total, elapsed }
   })
 
   // Header summary parts: compact counts, right-aligned like the sibling plugin.
@@ -422,6 +508,7 @@ export function ShellPanel(props: {
       running: s.running > 0 ? `\u25cf${s.running}` : "",
       failed: s.failed > 0 ? `\u2717${s.failed}` : "",
       total: s.total > 0 ? String(s.total) : "",
+      elapsed: s.elapsed > 0 ? fmtDuration(s.elapsed, false, props.timeFormat()) : "",
     }
   })
   const headerSummaryCols = createMemo(() => {
@@ -429,17 +516,18 @@ export function ShellPanel(props: {
     let w = visualWidth(h.running)
     if (h.failed) w += 1 + visualWidth(h.failed)
     if (h.total) w += 3 + visualWidth(h.total) // " · "
+    if (h.elapsed) w += 3 + visualWidth(h.elapsed) // " · "
     return w
   })
   const versionText = ` v${PLUGIN_VERSION}`
   const showVersion = createMemo(() => {
     if (!props.open()) return false
     const left = 2 + visualWidth(t("panel.title")) + visualWidth(versionText)
-    return left + headerSummaryCols() + 1 <= panelWidth()
+    return left + headerSummaryCols() + 1 <= panelWidth() - gutter()
   })
   const headerSpacer = () => {
     const left = 2 + visualWidth(t("panel.title")) + (showVersion() ? visualWidth(versionText) : 0)
-    return Math.max(1, panelWidth() - left - headerSummaryCols())
+    return Math.max(1, panelWidth() - gutter() - left - headerSummaryCols())
   }
 
   // Clamp the offset back into range when the list shrinks.
@@ -516,6 +604,11 @@ export function ShellPanel(props: {
   return (
     <box
       ref={(el: any) => (boxEl = el)}
+      border={props.border()}
+      {...(props.border() ? { borderColor: pal().border } : {})}
+      paddingTop={0} paddingBottom={0}
+      paddingLeft={props.border() ? 2 : 0}
+      paddingRight={props.border() ? 2 : 0}
       onSizeChange={() => {
         // The renderer does not guarantee boxEl.width at render time; capture the
         // measured width like the sibling plugin does so the header/separator fill it.
@@ -541,6 +634,9 @@ export function ShellPanel(props: {
           </Show>
           <Show when={headerSummary().total}>
             <span style={{ fg: pal().muted }}>{" \u00b7 " + headerSummary().total}</span>
+          </Show>
+          <Show when={headerSummary().elapsed}>
+            <span style={{ fg: pal().muted }}>{" \u00b7 " + headerSummary().elapsed}</span>
           </Show>
         </Show>
       </text>
@@ -592,7 +688,15 @@ export function ShellPanel(props: {
                   if (et) w += 1 + visualWidth(et)
                   return w
                 }
-                const labelAvail = () => Math.max(6, panelWidth() - LEFT_PAD - suffixW())
+                const badge = () => {
+                  if (entry.agent === undefined) return ""
+                  const name = entry.agent || t("source.subagent")
+                  // Cap the badge so a long agent name never crowds out the command.
+                  const maxName = Math.max(4, Math.min(14, panelWidth() - gutter() - LEFT_PAD - suffixW() - 12))
+                  return `\u21b3 ${truncate(name, maxName)}`
+                }
+                const badgeW = () => (badge() ? visualWidth(badge()) + 1 : 0)
+                const labelAvail = () => Math.max(6, panelWidth() - gutter() - LEFT_PAD - badgeW() - suffixW())
                 const labelText = () => {
                   const maxCols = labelAvail()
                   const text = firstLine(entry.command) || "\u2014"
@@ -611,6 +715,10 @@ export function ShellPanel(props: {
                       {" "}
                       <span style={{ fg: statusColorOf(entry) }}>{statusGlyph(entry)}</span>
                       {" "}
+                      <Show when={badge()}>
+                        <span style={{ fg: dimColor(pal().primary, 0.8) }}>{badge()}</span>
+                        {" "}
+                      </Show>
                       <span style={{ fg: pal().text }}>{labelText()}</span>
                       <Show when={timeText()}>
                         <span style={{ fg: isRunning() ? pal().warning : pal().muted }}>{" " + timeText()}</span>
@@ -627,6 +735,14 @@ export function ShellPanel(props: {
                         <span style={{ fg: pal().muted }}>{expandedPad(t("label.source"))}</span>
                         <span style={{ fg: pal().muted }}>{entry.source === "user" ? t("source.user") : t("source.agent")}</span>
                       </text>
+                      <Show when={entry.agent !== undefined}>
+                        <text>
+                          {"  "}
+                          <span style={{ fg: pal().primary }}>{t("label.subagent")}: </span>
+                          <span style={{ fg: pal().muted }}>{expandedPad(t("label.subagent"))}</span>
+                          <span style={{ fg: pal().text }}>{truncate(entry.agent || t("source.subagent"), expandedValAvail())}</span>
+                        </text>
+                      </Show>
                       <text>
                         {"  "}
                         <span style={{ fg: pal().primary }}>{t("label.command")}: </span>
@@ -699,7 +815,7 @@ export function ShellPanel(props: {
                           {(line) => (
                             <text>
                               <span style={{ fg: pal().muted }}>{"  \u2502 "}</span>
-                              <span style={{ fg: pal().text }}>{truncate(line, Math.max(8, panelWidth() - 6))}</span>
+                              <span style={{ fg: pal().text }}>{truncate(line, Math.max(8, panelWidth() - gutter() - 6))}</span>
                             </text>
                           )}
                         </For>

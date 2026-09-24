@@ -8,9 +8,10 @@ import { clearTick, setClearTick } from "../panel/store"
 
 const nextTick = () => new Promise<void>((resolve) => setTimeout(resolve, 0))
 
-const MAX_OPTIONS: readonly number[] = [5, 10, 20, 50]
+export const MAX_OPTIONS: readonly number[] = [5, 10, 20, 50]
 const THRESHOLDS: readonly number[] = [10_000, 30_000, 60_000, 120_000, 300_000]
-const thresholdLabel = (ms: number) => (ms < 60_000 ? `${Math.round(ms / 1000)}s` : `${Math.round(ms / 60_000)}m`)
+export const thresholdLabel = (ms: number) => (ms < 60_000 ? `${Math.round(ms / 1000)}s` : `${Math.round(ms / 60_000)}m`)
+export { THRESHOLDS }
 
 /**
  * Native settings menu: each selection takes effect immediately and is written back to KV,
@@ -44,6 +45,9 @@ export function openSettingsMenu(context: Context, api: ShellPanelApi, signals: 
           { title: `${t("settings.showTime")}: ${onOff(signals.showEntryTime())}`, value: "showtime" },
           { title: `${t("settings.showCwd")}: ${onOff(signals.showEntryCwd())}`, value: "showcwd" },
           { title: `${t("settings.showExit")}: ${onOff(signals.showEntryExit())}`, value: "showexit" },
+          { title: `${t("settings.showSubagents")}: ${onOff(signals.showSubagents())}`, value: "showsub" },
+          { title: `${t("settings.showFooter")}: ${onOff(signals.showFooter())}`, value: "showfooter" },
+          { title: `${t("settings.border")}: ${onOff(signals.border())}`, value: "border" },
           { title: `${t("settings.notify")}: ${onOff(signals.notifyOnFinish())}`, value: "notify" },
           { title: `${t("settings.notifyThreshold")}: ${thresholdLabel(signals.notifyThresholdMs())}`, value: "threshold" },
           { title: t("settings.clearFinished"), value: "clear" },
@@ -124,6 +128,24 @@ export function openSettingsMenu(context: Context, api: ShellPanelApi, signals: 
         if (picked !== undefined) {
           signals.setShowEntryExit(picked)
           kv.set(SETTING_KEYS.showEntryExit, picked)
+        }
+      } else if (choice === "showsub") {
+        const picked = await pickBool(t("settings.showSubagents"), signals.showSubagents())
+        if (picked !== undefined) {
+          signals.setShowSubagents(picked)
+          kv.set(SETTING_KEYS.showSubagents, picked)
+        }
+      } else if (choice === "showfooter") {
+        const picked = await pickBool(t("settings.showFooter"), signals.showFooter())
+        if (picked !== undefined) {
+          signals.setShowFooter(picked)
+          kv.set(SETTING_KEYS.showFooter, picked)
+        }
+      } else if (choice === "border") {
+        const picked = await pickBool(t("settings.border"), signals.border())
+        if (picked !== undefined) {
+          signals.setBorder(picked)
+          kv.set(SETTING_KEYS.border, picked)
         }
       } else if (choice === "notify") {
         const picked = await pickBool(t("settings.notify"), signals.notifyOnFinish())

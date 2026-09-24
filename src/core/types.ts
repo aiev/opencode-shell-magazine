@@ -16,6 +16,8 @@ export interface ShellEntry {
   shellID?: string
   /** Origin: agent (tool call) or user (in-session !command). */
   source: "agent" | "user"
+  /** Subagent that ran this command: undefined = current session, "" = subagent (name unknown). */
+  agent?: string
   command: string
   cwd?: string
   shell?: string
@@ -59,6 +61,12 @@ export interface SharedSignals {
   setShowEntryCwd: (v: boolean) => void
   showEntryExit: () => boolean
   setShowEntryExit: (v: boolean) => void
+  showSubagents: () => boolean
+  setShowSubagents: (v: boolean) => void
+  border: () => boolean
+  setBorder: (v: boolean) => void
+  showFooter: () => boolean
+  setShowFooter: (v: boolean) => void
   timeFormat: () => TimeFormat
   setTimeFormat: (f: TimeFormat) => void
   notifyOnFinish: () => boolean

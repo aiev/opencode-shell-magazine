@@ -39,14 +39,30 @@ Restart the TUI and the **Shell** panel appears at the bottom of the sidebar.
 
 | Command | Description |
 | --- | --- |
-| `/shell-magazine` | Open the settings menu (language, max entries, order, scroll, time format, display toggles, notify threshold, clear finished) |
+| `/shell-magazine` | Open the interactive settings menu (Esc to close) |
+| `/shell-magazine-config` | Show the current settings summary |
 | `/shell-magazine-clear` | Remove finished command records |
 | `/shell-magazine-version` | Show the plugin version |
+| `/shell-magazine-lang` | Choose the language |
+| `/shell-magazine-max` | Choose how many entries are shown |
+| `/shell-magazine-order` | Choose the sort order |
+| `/shell-magazine-scroll` | Choose the paging mode |
+| `/shell-magazine-time-format` | Choose the elapsed-time format |
+| `/shell-magazine-threshold` | Choose the notification threshold |
+| `/shell-magazine-show-time` | Toggle elapsed time in the list |
+| `/shell-magazine-show-cwd` | Toggle working directory in the list |
+| `/shell-magazine-show-exit` | Toggle exit code in the list |
+| `/shell-magazine-show-subagents` | Toggle commands run by subagents |
+| `/shell-magazine-footer-status` | Toggle the footer running indicator |
+| `/shell-magazine-border` | Toggle the panel border |
+| `/shell-magazine-notify` | Toggle the finish notification |
 
 ## Panel
 
+- Header: `● running`, `✗ failed`, `· total`, `· elapsed time` (right-aligned), plus the plugin version.
 - Click the title to collapse/expand the panel; click an entry to expand details.
-- Details include: source (agent/user), full command, directory, shell, PID, timeout, exit code, output file and output tail.
+- Subagent commands carry a `↳ agent` badge (long names are truncated; the full name is in the details).
+- Details include: source (agent/user), subagent, full command, directory, shell, PID, timeout, exit code, output file and output tail.
 - Running commands expose `[Kill]`; background commands expose `[Open output file]` (opens the `.out` with the system default app).
 - Wheel paging (or click paging via settings).
 
@@ -61,6 +77,9 @@ Restart the TUI and the **Shell** panel appears at the bottom of the sidebar.
 | Show elapsed time | On | Duration in the list |
 | Show directory | Off | cwd in the list |
 | Show exit code | On | `exit N` for finished entries |
+| Show subagent commands | On | Include shells from subagent sessions, tagged with a `↳ agent` badge |
+| Footer indicator | On | `● N shell` in the prompt footer while commands are running |
+| Border | Off | Draw a border around the panel |
 | Notify on finish | On | System notification when threshold is reached |
 | Notify threshold | 30s | 10s / 30s / 1m / 2m / 5m |
 
@@ -70,6 +89,7 @@ Restart the TUI and the **Shell** panel appears at the bottom of the sidebar.
 2. **Events**: `session.shell.started` / `session.shell.ended` update entries live; `ended` carries the final status, exit code and output snapshot.
 3. **History**: session messages are scanned — assistant tool parts (`name: "shell"`, with `time.{created,ran,completed}` and `metadata.{exit,truncated,shellID}`) and user shell messages (`type: "shell"`).
 4. **Settling**: the host registry only keeps running shells. After a plugin restart, still-running background commands appear in the registry; a "running" entry that is absent from the registry has ended (its `ended` event was missed). The panel settles it from that evidence — never from a timeout.
+5. **Subagents**: tool parts named `subagent`/`task` reference descendant sessions; those sessions are scanned recursively (depth-limited) and their shells are tagged with the agent name, so a subagent's commands show up next to yours (toggleable).
 
 ## Development
 

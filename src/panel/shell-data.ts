@@ -137,6 +137,54 @@ export function scanShellEntries(messages: unknown[]): ShellEntry[] {
   return out
 }
 
+/** A descendant session referenced by a subagent tool part. */
+export interface SubSessionRef {
+  id: string
+  agent?: string
+}
+
+/** Collect subagent child sessions referenced by a message list (tool parts named "subagent"/"task"). */
+export function collectSubSessions(messages: unknown[]): SubSessionRef[] {
+  const out: SubSessionRef[] = []
+  const seen = new Set<string>()
+  for (const raw of messages) {
+    const msg = raw as Record<string, any>
+    if (!msg || !Array.isArray(msg.content)) continue
+    for (const rawPart of msg.content) {
+      const part = rawPart as Record<string, any>
+      if (!part || part.type !== "tool") continue
+      const name = String(part.name ?? part.tool ?? "")
+      if (name !== "subagent" && name !== "task") continue
+      const st = (part.state ?? {}) as Record<string, any>
+      const meta = { ...(part.metadata ?? {}), ...(st.metadata ?? {}) } as Record<string, any>
+      const sidRaw = meta.sessionID ?? meta.session_id ?? meta.sessionId
+      if (sidRaw === undefined) continue
+      const id = String(sidRaw)
+      if (!id || seen.has(id)) continue
+      seen.add(id)
+      const input = (st.input ?? {}) as Record<string, any>
+      const agentRaw = input.agent ?? input.subagent_type
+      out.push({ id, agent: agentRaw !== undefined && String(agentRaw).length > 0 ? String(agentRaw) : undefined })
+    }
+  }
+  return out
+}
+
+/** Count running registry shells belonging to this session (or to the given descendant sessions). */
+export function countRunningShells(
+  shells: ShellInfoLike[],
+  sessionID: string,
+  subSessions?: ReadonlySet<string>,
+): number {
+  let n = 0
+  for (const s of shells) {
+    if (s.status !== "running") continue
+    const sid = String((s.metadata ?? {}).sessionID ?? "")
+    if (sid === sessionID || (subSessions?.has(sid) ?? false)) n++
+  }
+  return n
+}
+
 /** Take the last few lines of text (used for the output preview). */
 export function tailLines(text: string, maxLines: number): string {
   const lines = text.replace(/\r\n?/g, "\n").split("\n")

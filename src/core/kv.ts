@@ -30,6 +30,9 @@ export const SETTING_KEYS = {
   timeFormat: `${KV_PREFIX}.time_format`,
   notifyOnFinish: `${KV_PREFIX}.notify_on_finish`,
   notifyThreshold: `${KV_PREFIX}.notify_threshold`,
+  showSubagents: `${KV_PREFIX}.show_subagents`,
+  border: `${KV_PREFIX}.border`,
+  showFooter: `${KV_PREFIX}.show_footer`,
 } as const
 
 export function loadSessionData(kv: KVApi): Record<string, SessionRecord> {

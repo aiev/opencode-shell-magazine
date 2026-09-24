@@ -6,11 +6,12 @@ import { createShellApi } from "./v2/adapter"
 import { makeCommands } from "./v2/commands"
 import { mapTheme } from "./v2/theme"
 import { ShellPanel } from "./panel/ShellPanel"
+import { FooterStatus } from "./panel/FooterStatus"
 import type { ShellPanelApi } from "./panel/api"
 import type { Lang, SharedSignals, SortOrder, ScrollMode, TimeFormat } from "./core/types"
 import { TIME_FORMATS } from "./core/format"
 import { SETTING_KEYS } from "./core/kv"
-import { LANG_META, detectLang } from "./i18n"
+import { LANG_META, detectLang, createT } from "./i18n"
 
 /** The command layer must be registered in the app slot: commands must stay available when the sidebar is hidden. */
 function CommandRoot(props: {
@@ -45,6 +46,8 @@ function PluginRoot(props: {
       showEntryTime={props.signals.showEntryTime}
       showEntryCwd={props.signals.showEntryCwd}
       showEntryExit={props.signals.showEntryExit}
+      showSubagents={props.signals.showSubagents}
+      border={props.signals.border}
       timeFormat={props.signals.timeFormat}
       notifyOnFinish={props.signals.notifyOnFinish}
       notifyThresholdMs={props.signals.notifyThresholdMs}
@@ -76,6 +79,9 @@ const mod: PluginModule = {
     const [showEntryTime, setShowEntryTime] = createSignal<boolean>((api.kv.get(SETTING_KEYS.showEntryTime, true) as boolean) !== false)
     const [showEntryCwd, setShowEntryCwd] = createSignal<boolean>((api.kv.get(SETTING_KEYS.showEntryCwd, false) as boolean) === true)
     const [showEntryExit, setShowEntryExit] = createSignal<boolean>((api.kv.get(SETTING_KEYS.showEntryExit, true) as boolean) !== false)
+    const [showSubagents, setShowSubagents] = createSignal<boolean>((api.kv.get(SETTING_KEYS.showSubagents, true) as boolean) !== false)
+    const [border, setBorder] = createSignal<boolean>((api.kv.get(SETTING_KEYS.border, false) as boolean) === true)
+    const [showFooter, setShowFooter] = createSignal<boolean>((api.kv.get(SETTING_KEYS.showFooter, true) as boolean) !== false)
     const storedTimeFormat = String(api.kv.get(SETTING_KEYS.timeFormat, "short"))
     const [timeFormat, setTimeFormat] = createSignal<TimeFormat>(
       (TIME_FORMATS as readonly string[]).includes(storedTimeFormat) ? (storedTimeFormat as TimeFormat) : "short",
@@ -89,6 +95,9 @@ const mod: PluginModule = {
       showEntryTime, setShowEntryTime,
       showEntryCwd, setShowEntryCwd,
       showEntryExit, setShowEntryExit,
+      showSubagents, setShowSubagents,
+      border, setBorder,
+      showFooter, setShowFooter,
       timeFormat, setTimeFormat,
       notifyOnFinish, setNotifyOnFinish,
       notifyThresholdMs, setNotifyThresholdMs,
@@ -117,6 +126,23 @@ const mod: PluginModule = {
           />
         )
       },
+    })
+
+    // Prompt footer status: "N shell" while commands are running
+    // (toggle: settings menu or /shell-magazine-footer-status).
+    const t = createT(() => signals.lang())
+    context.ui.slot({
+      append: "prompt.footer.status",
+      render: (props) => (
+        <FooterStatus
+          api={api}
+          theme={mapTheme(context.theme)}
+          sessionID={String(props.sessionID ?? signals.sessionId ?? "")}
+          enabled={signals.showFooter}
+          showSubagents={signals.showSubagents}
+          label={() => t("footer.shell")}
+        />
+      ),
     })
   },
 }
