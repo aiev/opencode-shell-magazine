@@ -417,6 +417,27 @@ export function ShellPanel(props: {
     return { running, failed, total: entryMap().size }
   })
 
+  // Header summary parts: compact counts, right-aligned like the sibling plugin.
+  const headerSummary = createMemo(() => {
+    const s = summary()
+    return {
+      running: s.running > 0 ? `\u25cf${s.running}` : "",
+      failed: s.failed > 0 ? `\u2717${s.failed}` : "",
+      total: s.total > 0 ? String(s.total) : "",
+    }
+  })
+  const headerSummaryCols = createMemo(() => {
+    const h = headerSummary()
+    let w = visualWidth(h.running)
+    if (h.failed) w += 1 + visualWidth(h.failed)
+    if (h.total) w += 3 + visualWidth(h.total) // " · "
+    return w
+  })
+  const headerSpacer = () => {
+    const left = 2 + visualWidth(t("panel.title")) // arrow + space + title
+    return Math.max(1, panelWidth() - left - headerSummaryCols())
+  }
+
   // Clamp the offset back into range when the list shrinks.
   createEffect(() => {
     const maxOff = Math.max(0, sorted().length - max())
@@ -494,14 +515,17 @@ export function ShellPanel(props: {
       <text onMouseUp={toggleOpen}>
         <span style={{ fg: pal().muted }}>{props.open() ? "\u25bc " : "\u25b6 "}</span>
         <span style={{ fg: pal().primary }}>{t("panel.title")}</span>
-        <Show when={summary().running > 0}>
-          <span style={{ fg: pal().warning }}>{" \u25cf " + summary().running}</span>
-        </Show>
-        <Show when={summary().failed > 0}>
-          <span style={{ fg: pal().error }}>{" \u2717 " + summary().failed}</span>
-        </Show>
-        <Show when={summary().total > 0}>
-          <span style={{ fg: pal().muted }}>{" " + summary().total}</span>
+        <Show when={anyEntry()}>
+          <span style={{ fg: pal().muted }}>{" ".repeat(headerSpacer())}</span>
+          <Show when={headerSummary().running}>
+            <span style={{ fg: pal().warning }}>{headerSummary().running}</span>
+          </Show>
+          <Show when={headerSummary().failed}>
+            <span style={{ fg: pal().error }}>{" " + headerSummary().failed}</span>
+          </Show>
+          <Show when={headerSummary().total}>
+            <span style={{ fg: pal().muted }}>{" \u00b7 " + headerSummary().total}</span>
+          </Show>
         </Show>
       </text>
 
