@@ -16,12 +16,13 @@ import { openFilePath } from "../open-file"
 import { createT } from "../i18n"
 import type { Lang, SortOrder, ScrollMode, ShellEntry, TimeFormat } from "../core/types"
 import { visualWidth, truncate, fmtDuration } from "../core/format"
-import { rgb, desaturateTo, FALLBACK, MAX_SAT } from "../core/color"
+import { rgb, desaturateTo, dimColor, FALLBACK, MAX_SAT } from "../core/color"
 import { SESSION_DATA_KEY, SETTING_KEYS, updateSessionData } from "../core/kv"
 import type { ShellPanelApi, ShellInfoLike } from "./api"
 import { clearTick } from "./store"
 import { entryKey, findShellEntryKey, mergeShellEntry } from "./entry-map"
 import { durationOf, entryFromShellInfo, isTerminal, scanShellEntries, tailLines } from "./shell-data"
+import { PLUGIN_VERSION } from "../_version"
 
 /** Entry row prefix: expand arrow + space + status dot + space */
 const LEFT_PAD = 4
@@ -79,7 +80,7 @@ export function ShellPanel(props: {
   const [hoveredMoreAbove, setHoveredMoreAbove] = createSignal(false)
   const [hoveredMoreBelow, setHoveredMoreBelow] = createSignal(false)
   const [outputCache, setOutputCache] = createSignal<Map<string, { text: string; truncated?: boolean }>>(new Map())
-
+  const [panelWidthSignal, setPanelWidthSignal] = createSignal(28)
   let boxEl: any
   let persistTimer: ReturnType<typeof setTimeout> | undefined
   let registryReady = false
@@ -98,10 +99,7 @@ export function ShellPanel(props: {
     }
   }
 
-  const panelWidth = () => {
-    const w = boxEl?.width
-    return typeof w === "number" && w > 0 ? Math.max(20, w) : 28
-  }
+  const panelWidth = () => Math.max(20, panelWidthSignal())
   const sep = () => "\u2500".repeat(panelWidth())
 
   const firstLine = (s: string) => (s.split("\n")[0] ?? "").trim()
@@ -433,8 +431,14 @@ export function ShellPanel(props: {
     if (h.total) w += 3 + visualWidth(h.total) // " · "
     return w
   })
+  const versionText = ` v${PLUGIN_VERSION}`
+  const showVersion = createMemo(() => {
+    if (!props.open()) return false
+    const left = 2 + visualWidth(t("panel.title")) + visualWidth(versionText)
+    return left + headerSummaryCols() + 1 <= panelWidth()
+  })
   const headerSpacer = () => {
-    const left = 2 + visualWidth(t("panel.title")) // arrow + space + title
+    const left = 2 + visualWidth(t("panel.title")) + (showVersion() ? visualWidth(versionText) : 0)
     return Math.max(1, panelWidth() - left - headerSummaryCols())
   }
 
@@ -510,11 +514,23 @@ export function ShellPanel(props: {
 
   // ── Rendering ──
   return (
-    <box ref={(el: any) => (boxEl = el)} flexDirection="column" gap={0}>
+    <box
+      ref={(el: any) => (boxEl = el)}
+      onSizeChange={() => {
+        // The renderer does not guarantee boxEl.width at render time; capture the
+        // measured width like the sibling plugin does so the header/separator fill it.
+        const w = boxEl ? Math.max(20, Math.floor(boxEl.width ?? 0)) : 28
+        setPanelWidthSignal((prev) => (prev === w ? prev : w))
+      }}
+      flexDirection="column" gap={0}
+    >
       {/* header */}
       <text onMouseUp={toggleOpen}>
         <span style={{ fg: pal().muted }}>{props.open() ? "\u25bc " : "\u25b6 "}</span>
         <span style={{ fg: pal().primary }}>{t("panel.title")}</span>
+        <Show when={showVersion()}>
+          <span style={{ fg: dimColor(pal().muted, 0.75) }}>{versionText}</span>
+        </Show>
         <Show when={anyEntry()}>
           <span style={{ fg: pal().muted }}>{" ".repeat(headerSpacer())}</span>
           <Show when={headerSummary().running}>
@@ -576,7 +592,7 @@ export function ShellPanel(props: {
                   if (et) w += 1 + visualWidth(et)
                   return w
                 }
-                const labelAvail = () => Math.max(6, panelWidth() - LEFT_PAD - suffixW() - 1)
+                const labelAvail = () => Math.max(6, panelWidth() - LEFT_PAD - suffixW())
                 const labelText = () => {
                   const maxCols = labelAvail()
                   const text = firstLine(entry.command) || "\u2014"
