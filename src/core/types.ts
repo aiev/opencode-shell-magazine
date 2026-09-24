@@ -6,21 +6,21 @@ export type ScrollMode = "wheel" | "click"
 /** How elapsed time is rendered in the sidebar (see TIME_FORMAT_SAMPLES). */
 export type TimeFormat = "short" | "decimal" | "clock" | "compact" | "seconds"
 
-/** 命令状态：running 为进行中；其余为宿主上报的终态（或工具失败）。 */
+/** Command status: running means in progress; the others are terminal states reported by the host (or tool failure). */
 export type ShellStatus = "running" | "exited" | "timeout" | "killed" | "error"
 
 export interface ShellEntry {
-  /** 稳定主键：优先 shellID，其次 tool call id / 消息 id。 */
+  /** Stable primary key: shellID first, then tool call id / message id. */
   id: string
-  /** 宿主的 shell 记录 id（sh_…）——kill / 读输出都靠它。 */
+  /** Host shell record id (sh_…) — used for both kill and output reads. */
   shellID?: string
-  /** 来源：agent（工具调用）或 user（会话内 !命令）。 */
+  /** Origin: agent (tool call) or user (in-session !command). */
   source: "agent" | "user"
   command: string
   cwd?: string
   shell?: string
   pid?: number
-  /** 后台输出的落盘文件（~/.local/share/opencode/shell/…/*.out）。 */
+  /** On-disk file for background output (~/.local/share/opencode/shell/…/*.out). */
   file?: string
   timeout?: number
   status: ShellStatus
@@ -29,7 +29,7 @@ export interface ShellEntry {
   endedAt?: number
   output?: string
   truncated?: boolean
-  /** 已完成并发出过 attention 通知。 */
+  /** Finished, and an attention notification has already been sent. */
   notified?: boolean
   error?: string
 }

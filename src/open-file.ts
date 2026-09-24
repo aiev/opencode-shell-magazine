@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process"
 import { platform } from "node:os"
 
-/** 用系统默认程序打开文件（linux: xdg-open；macOS: open；Windows: start）。 */
+/** Open a file with the system default program (linux: xdg-open; macOS: open; Windows: start). */
 export function openFilePath(path: string): boolean {
   if (!path) return false
   try {

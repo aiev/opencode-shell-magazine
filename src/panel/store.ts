@@ -1,8 +1,8 @@
 import { createSignal } from "solid-js"
 import type { ShellEntry } from "../core/types"
 
-/** 模块级缓存：各 session 的 entry 状态独立存储，不随当前视图切换而清除。 */
+/** Module-level cache: entry state is stored per session and is not cleared when the current view changes. */
 export const globalEntryCache = new Map<string, Map<string, ShellEntry>>()
 
-/** 模块级刷新信号：外部（如斜杠命令）触发清除后 +1，组件 scan 依赖它以重扫。 */
+/** Module-level refresh signal: incremented after an external clear (e.g. a slash command); the component's scan depends on it to rescan. */
 export const [clearTick, setClearTick] = createSignal(0)

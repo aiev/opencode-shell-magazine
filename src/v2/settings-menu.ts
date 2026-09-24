@@ -13,8 +13,8 @@ const THRESHOLDS: readonly number[] = [10_000, 30_000, 60_000, 120_000, 300_000]
 const thresholdLabel = (ms: number) => (ms < 60_000 ? `${Math.round(ms / 1000)}s` : `${Math.round(ms / 60_000)}m`)
 
 /**
- * 原生设置菜单：每次选择后立即生效并写回 KV，然后重新打开菜单
- * （宿主会在下一次 select 前关闭编辑器）。
+ * Native settings menu: each selection takes effect immediately and is written back to KV,
+ * then the menu reopens (the host closes the editor before the next select).
  */
 export function openSettingsMenu(context: Context, api: ShellPanelApi, signals: SharedSignals): void {
   const t = createT(() => signals.lang())

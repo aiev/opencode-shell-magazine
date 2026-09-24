@@ -12,7 +12,7 @@ import { TIME_FORMATS } from "./core/format"
 import { SETTING_KEYS } from "./core/kv"
 import { LANG_META, detectLang } from "./i18n"
 
-/** 命令层必须在 app 槽注册：侧栏隐藏时命令仍需可用。 */
+/** The command layer must be registered in the app slot: commands must stay available when the sidebar is hidden. */
 function CommandRoot(props: {
   context: Context
   api: ShellPanelApi
@@ -25,7 +25,7 @@ function CommandRoot(props: {
   return null
 }
 
-/** 面板根组件：渲染 ShellPanel（命令层见 CommandRoot）。 */
+/** Panel root component: renders ShellPanel (see CommandRoot for the command layer). */
 function PluginRoot(props: {
   api: ShellPanelApi
   theme: Record<string, unknown>
@@ -54,8 +54,8 @@ function PluginRoot(props: {
 }
 
 /**
- * V2 入口：setup 创建共享信号 + ShellPanelApi + 命令 layer + 侧边栏槽位。
- * 信号初始值从 KV 恢复；面板挂在 sidebar.content 底部（append）。
+ * V2 entry point: setup creates the shared signals + ShellPanelApi + command layer + sidebar slot.
+ * Signal initial values are restored from KV; the panel is appended at the bottom of sidebar.content.
  */
 const mod: PluginModule = {
   id: "opencode-shell-magazine",
@@ -95,7 +95,7 @@ const mod: PluginModule = {
       sessionId: "",
     }
 
-    // 命令层挂 app 槽：侧栏隐藏时斜杠命令仍需可用（见 CommandRoot）
+    // Command layer goes in the app slot: slash commands must stay available when the sidebar is hidden (see CommandRoot)
     context.ui.slot({
       append: "app",
       render: () => (
@@ -103,7 +103,7 @@ const mod: PluginModule = {
       ),
     })
 
-    // 侧边栏面板（append：排在其它侧栏内容之后）
+    // Sidebar panel (append: placed after the other sidebar content)
     context.ui.slot({
       append: "sidebar.content",
       render: (props) => {

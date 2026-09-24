@@ -23,9 +23,9 @@ import { clearTick } from "./store"
 import { entryKey, findShellEntryKey, mergeShellEntry } from "./entry-map"
 import { durationOf, entryFromShellInfo, isTerminal, scanShellEntries, tailLines } from "./shell-data"
 
-/** 条目行前缀：折叠箭头 + 空格 + 状态点 + 空格 */
+/** Entry row prefix: expand arrow + space + status dot + space */
 const LEFT_PAD = 4
-/** 输出预览的最大行数 */
+/** Maximum number of output preview lines */
 const OUTPUT_LINES = 10
 
 interface ShellSessionRecord {
@@ -55,7 +55,7 @@ export function ShellPanel(props: {
 }): JSX.Element {
   const t = createT(() => props.lang())
 
-  // ── 持久化的会话记录（多实例安全：更新走 updateSessionData）──
+  // ── Persisted session record (multi-instance safe: updates go through updateSessionData) ──
   const loadRecord = (): ShellSessionRecord => {
     try {
       const raw = props.api.kv.get(SESSION_DATA_KEY, "{}")
@@ -67,7 +67,7 @@ export function ShellPanel(props: {
   }
   const initial = loadRecord()
   const clearedIds = new Set<string>(initial.clearedIds ?? [])
-  /** 启动时已在磁盘/历史里的条目：静默标记，不发通知（只有本次挂载内启动的命令才通知）。 */
+  /** Entries already on disk/in history at startup: marked silently, with no notification (only commands started during this mount notify). */
   const suppressed = new Set<string>(initial.entries.map((e) => entryKey(e)))
 
   const [entryMap, setEntryMap] = createSignal<Map<string, ShellEntry>>(
@@ -85,7 +85,7 @@ export function ShellPanel(props: {
   let registryReady = false
   let suppressedRegistry = false
 
-  // ── 调色板（Morandi 风格，自适应主题）──
+  // ── Palette (Morandi style, theme-adaptive) ──
   const pal = () => {
     const th = props.theme as Record<string, string>
     return {
@@ -142,7 +142,7 @@ export function ShellPanel(props: {
 
   const durationOfEntry = (e: ShellEntry) => durationOf(e, now())
 
-  // ── 持久化 ──
+  // ── Persistence ──
   const persist = (entries: Map<string, ShellEntry>) => {
     const list = [...entries.values()]
     void Promise.resolve(updateSessionData(props.api.kv, (data) => {
@@ -163,7 +163,7 @@ export function ShellPanel(props: {
     }, 150)
   }
 
-  // ── 通知（仅对达到阈值的完成命令；记录 notified 防重复）──
+  // ── Notifications (only for finished commands past the threshold; the notified flag prevents duplicates) ──
   const checkNotifications = () => {
     if (!props.notifyOnFinish()) return
     const threshold = props.notifyThresholdMs()
@@ -197,7 +197,7 @@ export function ShellPanel(props: {
     }
   }
 
-  // ── 条目合并/落盘 ──
+  // ── Entry merge / persist ──
   const applyEntries = (incoming: ShellEntry[], opts?: { fromScan?: boolean }) => {
     let changed = false
     setEntryMap((prev) => {
@@ -228,9 +228,10 @@ export function ShellPanel(props: {
   }
 
   /**
-   * 注册表对账：宿主只保留“运行中”的 shell 记录。
-   * 之前后台启动、插件重启后已不在注册表的条目 = 进程已结束
-   * （错过了 ended 事件）——按真实证据收尾，不做时间猜测。
+   * Registry reconciliation: the host only keeps "running" shell records.
+   * Entries started in the background earlier that are no longer in the registry after a plugin
+   * restart = the process has ended (the ended event was missed) — closed out on hard evidence,
+   * with no guessing from timestamps.
    */
   const pruneFinished = (present: Set<string>) => {
     if (!registryReady) return
@@ -290,7 +291,7 @@ export function ShellPanel(props: {
     }
   }
 
-  // ── 生命周期：历史扫描 + 实时事件 + 心跳/对账 ──
+  // ── Lifecycle: history scan + live events + heartbeat/reconciliation ──
   onMount(() => {
     void (async () => {
       await syncRegistry()
@@ -330,20 +331,20 @@ export function ShellPanel(props: {
     })
   })
 
-  // 斜杠命令触发的“清除已完成”.
+  // "Clear finished" triggered by the slash command.
   createEffect(() => {
     const tick = clearTick()
     if (tick === 0) return
     untrack(() => clearFinished())
   })
 
-  // 展开运行中的 shell 时拉取输出.
+  // Fetch output when a running shell is expanded.
   createEffect(() => {
     const e = expandedEntry()
     if (e?.status === "running" && e.shellID) void loadOutput(e)
   })
 
-  // ── 排序 / 分页 ──
+  // ── Sorting / paging ──
   const sorted = createMemo(() => {
     const list = [...entryMap().values()]
     list.sort((a, b) => (props.sortOrder() === "asc" ? a.startedAt - b.startedAt : b.startedAt - a.startedAt))
@@ -364,7 +365,7 @@ export function ShellPanel(props: {
     return { running, failed, total: entryMap().size }
   })
 
-  // 列表收缩时把 offset 拉回合法范围.
+  // Clamp the offset back into range when the list shrinks.
   createEffect(() => {
     const maxOff = Math.max(0, sorted().length - max())
     if (scrollOffset() > maxOff) {
@@ -407,7 +408,7 @@ export function ShellPanel(props: {
     setScroll(Math.max(0, Math.min(scrollOffset() + dir * m, total - m)))
   }
 
-  // ── 动作 ──
+  // ── Actions ──
   const killEntry = async (entry: ShellEntry) => {
     if (!entry.shellID) return
     const ok = await props.api.ui.confirm(t("confirm.kill.title"), t("confirm.kill.message"))
@@ -434,7 +435,7 @@ export function ShellPanel(props: {
     }
   }
 
-  // ── 渲染 ──
+  // ── Rendering ──
   return (
     <box ref={(el: any) => (boxEl = el)} flexDirection="column" gap={0}>
       {/* header */}

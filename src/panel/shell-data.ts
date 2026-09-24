@@ -10,7 +10,7 @@ export function isTerminal(status: ShellStatus): boolean {
   return status !== "running"
 }
 
-/** 宿主上报的状态字符串 → 面板状态（未知按运行中处理）。 */
+/** Host-reported status string → panel status (unknown is treated as running). */
 export function normalizeShellStatus(raw: unknown): ShellStatus {
   switch (String(raw ?? "")) {
     case "exited":
@@ -28,7 +28,7 @@ export function normalizeShellStatus(raw: unknown): ShellStatus {
   }
 }
 
-/** 工具 part 的 content → 纯文本（与 subagent-magazine 的 toV1Part 同语义）。 */
+/** Tool part content → plain text (same semantics as subagent-magazine's toV1Part). */
 export function contentToText(content: unknown): string | undefined {
   if (typeof content === "string") return content
   if (!Array.isArray(content)) return undefined
@@ -44,7 +44,7 @@ export function contentToText(content: unknown): string | undefined {
   return parts.length ? parts.join("\n") : undefined
 }
 
-/** 宿主 ShellInfo（注册表/事件）→ 面板条目；prev 用于保留来源等已知字段。 */
+/** Host ShellInfo (registry/event) → panel entry; prev preserves known fields such as source. */
 export function entryFromShellInfo(info: ShellInfoLike, prev?: Partial<ShellEntry>): ShellEntry {
   return {
     ...prev,
@@ -67,7 +67,7 @@ export function entryFromShellInfo(info: ShellInfoLike, prev?: Partial<ShellEntr
   }
 }
 
-/** assistant 消息里的 shell 工具 part → 面板条目（历史扫描）。 */
+/** A shell tool part inside an assistant message → panel entry (history scan). */
 export function entryFromToolPart(part: Record<string, any>): ShellEntry | undefined {
   if (!part || part.type !== "tool") return undefined
   const name = String(part.name ?? part.tool ?? "")
@@ -81,7 +81,7 @@ export function entryFromToolPart(part: Record<string, any>): ShellEntry | undef
   if (!id) return undefined
   const time = (part.time ?? st.time ?? {}) as Record<string, any>
   const raw = String(st.status ?? "")
-  // 后台命令：工具调用已返回（completed），进程仍在运行（metadata.status running）。
+  // Background command: the tool call has returned (completed) but the process is still running (metadata.status running).
   const background = shellID !== undefined && String(meta.status ?? "") === "running"
   const status: ShellStatus = raw === "error" ? "error" : raw === "completed" && !background ? "exited" : "running"
   return {
@@ -94,14 +94,14 @@ export function entryFromToolPart(part: Record<string, any>): ShellEntry | undef
     status,
     exit: num(meta.exit),
     startedAt: num(time.created) ?? num(time.ran) ?? Date.now(),
-    // 后台命令的 part 完成时间只是“派生成功”，不是进程结束时间——不采信。
+    // For a background command, the part completion time only means the spawn succeeded, not that the process exited — so it is not trusted.
     endedAt: shellID ? undefined : status === "running" ? undefined : num(time.completed),
     output: contentToText(st.content) ?? (typeof st.output === "string" ? st.output : undefined),
     truncated: meta.truncated === true,
   }
 }
 
-/** 会话内 shell 消息（用户 !命令）→ 面板条目。 */
+/** In-session shell message (user !command) → panel entry. */
 export function entryFromShellMessage(msg: Record<string, any>): ShellEntry | undefined {
   if (!msg || String(msg.type ?? "") !== "shell") return undefined
   const shellID = msg.shellID !== undefined ? String(msg.shellID) : undefined
@@ -120,7 +120,7 @@ export function entryFromShellMessage(msg: Record<string, any>): ShellEntry | un
   }
 }
 
-/** 从消息列表扫描历史 shell（工具 part + shell 消息）。 */
+/** Scan a message list for historical shells (tool parts + shell messages). */
 export function scanShellEntries(messages: unknown[]): ShellEntry[] {
   const out: ShellEntry[] = []
   for (const raw of messages) {
@@ -137,14 +137,14 @@ export function scanShellEntries(messages: unknown[]): ShellEntry[] {
   return out
 }
 
-/** 取文本末尾若干行（输出预览用）。 */
+/** Take the last few lines of text (used for the output preview). */
 export function tailLines(text: string, maxLines: number): string {
   const lines = text.replace(/\r\n?/g, "\n").split("\n")
   if (lines.length <= maxLines) return text
   return lines.slice(lines.length - maxLines).join("\n")
 }
 
-/** 条目时长（运行中按 now，结束按 endedAt）。 */
+/** Entry duration (now while running, endedAt once finished). */
 export function durationOf(entry: ShellEntry, now: number): number {
   const end = entry.endedAt ?? (entry.status === "running" ? now : entry.startedAt)
   return Math.max(0, end - entry.startedAt)

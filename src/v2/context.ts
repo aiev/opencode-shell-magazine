@@ -1,7 +1,7 @@
 /**
- * V2 (opencode2) TUI plugin API — 最小本地类型。
- * 运行时由宿主提供，此处仅用于本地类型检查；
- * 结构对应 @opencode/plugin 2.0.15 的 tui/context + @opencode/client 的形状。
+ * V2 (opencode2) TUI plugin API — minimal local types.
+ * Provided by the host at runtime; used here only for local type checking.
+ * The shapes mirror @opencode/plugin 2.0.15's tui/context + @opencode/client.
  */
 
 export interface App {
@@ -29,7 +29,7 @@ export interface LocationRef {
   readonly directory?: string
 }
 
-/** 宿主 shell 注册表条目（GET /api/shell）。 */
+/** Host shell registry entry (GET /api/shell). */
 export interface ShellInfo {
   readonly id: string
   readonly status: "running" | "exited" | "timeout" | "killed"
@@ -50,7 +50,7 @@ export interface ShellOutput {
   readonly truncated: boolean
 }
 
-/** 会话消息（assistant/user/shell 等；shell 消息带 shellID/command/status/exit/output）。 */
+/** Session message (assistant/user/shell, etc.; shell messages carry shellID/command/status/exit/output). */
 export interface MessageInfo {
   readonly id: string
   readonly type: string
@@ -119,7 +119,7 @@ export interface AttentionNotifyOptions {
   readonly sound?: boolean | { readonly name?: AttentionSoundName; readonly volume?: number; readonly when?: AttentionWhen }
 }
 
-/** 最小 client 面：shell 终止与输出读取走官方生成 client。 */
+/** Minimal client surface: shell termination and output reads go through the official generated client. */
 export interface ClientLike {
   readonly shell: {
     remove(input: { id: string; location?: LocationRef }): Promise<void>

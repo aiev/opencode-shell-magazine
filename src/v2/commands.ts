@@ -6,7 +6,7 @@ import { PLUGIN_VERSION } from "../_version"
 import { clearTick, setClearTick } from "../panel/store"
 import { openSettingsMenu } from "./settings-menu"
 
-/** 命令层（app 槽注册：侧栏隐藏时斜杠命令依然可用）。 */
+/** Command layer (registered in the app slot: slash commands stay available when the sidebar is hidden). */
 export function makeCommands(context: Context, api: ShellPanelApi, signals: SharedSignals): KeymapCommand[] {
   const t = createT(() => signals.lang())
   return [

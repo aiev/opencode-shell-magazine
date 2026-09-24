@@ -1,6 +1,6 @@
 import type { Context } from "./context"
 
-/** V2 theme → V1 形状映射（组件按 primary/text/textMuted/… 字段消费）。 */
+/** V2 theme → V1 shape mapping (components consume the primary/text/textMuted/… fields). */
 export function mapTheme(theme: Context["theme"]): Record<string, unknown> {
   return {
     primary: theme.hue.interactive[300],

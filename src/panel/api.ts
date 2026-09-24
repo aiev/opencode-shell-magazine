@@ -5,19 +5,19 @@ import type { KVApi } from "../core/kv"
 export interface ShellPanelApi {
   kv: KVApi
   shell: {
-    /** 当前 location 的 shell 注册表快照（包含前台/后台运行中的命令）。 */
+    /** Shell registry snapshot for the current location (includes foreground/background running commands). */
     list(): ShellInfoLike[]
-    /** 从服务器刷新注册表缓存；返回是否成功（失败时不做“已结束”推断）。 */
+    /** Refresh the registry cache from the server; returns whether it succeeded (no "finished" inference on failure). */
     sync(): Promise<boolean>
     onStarted(cb: (e: { sessionID: string; shell: ShellInfoLike }) => void): () => void
     onEnded(cb: (e: { sessionID: string; shell: ShellInfoLike; output?: ShellOutputLike }) => void): () => void
-    /** 终止运行中的 shell（DELETE /api/shell/{id}）。 */
+    /** Terminate a running shell (DELETE /api/shell/{id}). */
     kill(id: string): Promise<void>
-    /** 读取 shell 输出（后台 .out 的游标分页读取）。 */
+    /** Read shell output (cursor-paginated read of the background .out file). */
     readOutput(id: string, cursor?: number): Promise<ShellOutputLike | undefined>
   }
   session: {
-    /** 原始消息列表（历史扫描：工具 part 与 shell 消息）。 */
+    /** Raw message list (history scan: tool parts and shell messages). */
     messages(sid: string): unknown[] | undefined
   }
   attention: {

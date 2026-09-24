@@ -5,11 +5,11 @@ const asRecord = (v: unknown): Record<string, any> =>
   v && typeof v === "object" ? (v as Record<string, any>) : {}
 
 /**
- * V2 适配器：把宿主 API 收敛成面板契约。
+ * V2 adapter: narrows the host API down to the panel contract.
  *
- * - kv：宿主持久化存储（`shell_magazine.<key>`），并发 TUI 用原子 update 合并；
- * - shell：注册表快照 + `session.shell.*` 事件 + 官方 client（kill / 读输出）；
- * - session.messages：历史扫描（工具 part 与 shell 消息）。
+ * - kv: host persistent storage (`shell_magazine.<key>`); concurrent TUIs merge through atomic updates;
+ * - shell: registry snapshot + `session.shell.*` events + official client (kill / read output);
+ * - session.messages: history scan (tool parts and shell messages).
  */
 export function createShellApi(context: Context): ShellPanelApi {
   const kvStore = new Map<string, [Record<string, any>, (fn: (d: Record<string, any>) => void) => Promise<void>]>()
@@ -38,8 +38,8 @@ export function createShellApi(context: Context): ShellPanelApi {
     const [, mutate] = entry
     return mutate((d) => { d.value = value })
   }
-  // 原子 read-modify-write：宿主在存储锁内基于最新磁盘值应用 updater，
-  // 并发 TUI 实例会 merge，而不是用过期快照互相覆盖。
+  // Atomic read-modify-write: the host applies the updater inside the storage lock against the
+  // latest on-disk value, so concurrent TUI instances merge instead of overwriting each other with stale snapshots.
   const kvUpdate = (key: string, updater: (current: unknown) => unknown): Promise<void> => {
     let entry = kvStore.get(key)
     if (!entry) {

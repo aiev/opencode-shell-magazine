@@ -11,7 +11,7 @@ if (!existsSync(versionFile)) {
   writeFileSync(versionFile, `// auto-generated\nexport const PLUGIN_VERSION=${JSON.stringify(pkg.version)};\n`)
 }
 
-// V2（opencode2）入口：{ id, setup } 协议（tui/index.js 再导出）。
+// V2 (opencode2) entry point: the { id, setup } protocol (re-exported by tui/index.js).
 await esbuild.build({
   entryPoints: ["src/tui.tsx"],
   outfile: "dist/tui.js",

@@ -1,15 +1,15 @@
 import type { ShellEntry } from "../core/types"
 import { isTerminal } from "./shell-data"
 
-/** 条目的存储键：优先 shellID，其次 id。 */
+/** Entry storage key: shellID first, then id. */
 export function entryKey(entry: ShellEntry): string {
   return entry.shellID ?? entry.id
 }
 
 /**
- * 在 map 中查找同一 shell 的已有键。
- * 事件条目（sh_…）与扫描条目（tool:call_…）可能先后来到：
- * shellID 相同即视为同一条。
+ * Find the existing key for the same shell in the map.
+ * Event entries (sh_…) and scan entries (tool:call_…) may arrive in either order:
+ * the same shellID means the same entry.
  */
 export function findShellEntryKey(map: Map<string, ShellEntry>, next: ShellEntry): string | undefined {
   if (next.shellID && map.has(next.shellID)) return next.shellID
@@ -21,7 +21,7 @@ export function findShellEntryKey(map: Map<string, ShellEntry>, next: ShellEntry
   return undefined
 }
 
-/** 合并同一条目：终态优先（事件乱序/重启兜底），字段取并集。 */
+/** Merge the same entry: terminal state wins (out-of-order events / restart fallback); fields are merged as a union. */
 export function mergeShellEntry(prev: ShellEntry, next: ShellEntry): ShellEntry {
   const terminalWins = isTerminal(prev.status) && !isTerminal(next.status)
   const primary = terminalWins ? prev : next
@@ -48,7 +48,7 @@ export function mergeShellEntry(prev: ShellEntry, next: ShellEntry): ShellEntry 
   }
 }
 
-/** 把新条目并入已有列表（按 shell 去重 + 合并）。 */
+/** Merge new entries into an existing list (dedupe by shell + merge). */
 export function mergeShellEntries(prev: ShellEntry[], next: ShellEntry[]): ShellEntry[] {
   const map = new Map<string, ShellEntry>(prev.map((e) => [entryKey(e), e]))
   for (const entry of next) {
