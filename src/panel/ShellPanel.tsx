@@ -203,7 +203,29 @@ export function ShellPanel(props: {
     setEntryMap((prev) => {
       const next = new Map(prev)
       for (const inc of incoming) {
-        const k = findShellEntryKey(next, inc)
+        let k = findShellEntryKey(next, inc)
+        if (!k && inc.shellID) {
+          // Registry record for a command whose history entry never carried a
+          // shellID (host cache gap): adopt that entry instead of duplicating it.
+          for (const [key, e] of next) {
+            if (e.shellID || e.status !== "running" || e.source !== inc.source) continue
+            if (e.command.trim() !== inc.command.trim()) continue
+            k = key
+            break
+          }
+        }
+        if (!k && !inc.shellID && inc.source === "agent") {
+          // History entry for a shell already tracked through the registry: same
+          // command started around the same time = the same execution, adopt it.
+          for (const [key, e] of next) {
+            if (!e.shellID || e.source !== inc.source) continue
+            if (e.command.trim() !== inc.command.trim()) continue
+            if (e.startedAt === undefined || inc.startedAt === undefined) continue
+            if (Math.abs(e.startedAt - inc.startedAt) > 10_000) continue
+            k = key
+            break
+          }
+        }
         const existing = k ? next.get(k) : undefined
         if (!existing && opts?.fromScan && clearedIds.has(entryKey(inc))) continue
         const merged = existing ? mergeShellEntry(existing, inc) : inc
@@ -232,19 +254,47 @@ export function ShellPanel(props: {
    * Entries started in the background earlier that are no longer in the registry after a plugin
    * restart = the process has ended (the ended event was missed) — closed out on hard evidence,
    * with no guessing from timestamps.
+   *
+   * History entries without a shellID (host cache gap) are settled too when their command is
+   * not among the registry's live shells of this session; those are silent (never notified).
    */
-  const pruneFinished = (present: Set<string>) => {
+  const pruneFinished = (present: Set<string>, liveCommands: Set<string>) => {
     if (!registryReady) return
     let changed = false
+    const silent = new Set<string>()
     setEntryMap((prev) => {
       const next = new Map(prev)
       for (const [k, e] of next) {
-        if (e.status !== "running" || !e.shellID || present.has(e.shellID)) continue
+        if (e.status !== "running") continue
+        if (e.shellID) {
+          if (present.has(e.shellID)) continue
+        } else if (liveCommands.has(e.command.trim())) {
+          continue
+        } else {
+          silent.add(k)
+        }
         next.set(k, { ...e, status: "exited", endedAt: e.endedAt ?? Date.now() })
+        changed = true
+      }
+      // Drop history twins of registry-tracked entries (same command, same start):
+      // the registry record is the authoritative one. Remember the dropped key so
+      // the history scan does not resurrect the twin.
+      const tracked = [...next.values()].filter((e) => e.shellID !== undefined)
+      for (const [k, e] of next) {
+        if (e.shellID !== undefined) continue
+        const twin = tracked.find((t) =>
+          t.source === e.source &&
+          t.command.trim() === e.command.trim() &&
+          t.startedAt !== undefined && e.startedAt !== undefined &&
+          Math.abs(t.startedAt - e.startedAt) <= 10_000)
+        if (!twin) continue
+        clearedIds.add(k)
+        next.delete(k)
         changed = true
       }
       return changed ? next : prev
     })
+    for (const k of silent) suppressed.add(k)
     if (changed) {
       queuePersist()
       checkNotifications()
@@ -256,10 +306,12 @@ export function ShellPanel(props: {
     if (!ok) return
     const map = untrack(entryMap)
     const present = new Set<string>()
+    const liveCommands = new Set<string>()
     const entries: ShellEntry[] = []
     for (const s of props.api.shell.list()) {
       if (String((s.metadata ?? {}).sessionID ?? "") !== props.sessionId) continue
       present.add(s.id)
+      if (s.command) liveCommands.add(String(s.command).trim())
       const k = findShellEntryKey(map, { id: s.id, shellID: s.id } as ShellEntry)
       entries.push(entryFromShellInfo(s, k ? map.get(k) : undefined))
     }
@@ -268,7 +320,7 @@ export function ShellPanel(props: {
     suppressedRegistry = true
     if (firstSync) for (const e of entries) suppressed.add(entryKey(e))
     applyEntries(entries)
-    pruneFinished(present)
+    pruneFinished(present, liveCommands)
     const exp = untrack(expandedEntry)
     if (exp?.shellID && exp.status === "running") void loadOutput(exp)
   }

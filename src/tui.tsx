@@ -55,7 +55,7 @@ function PluginRoot(props: {
 
 /**
  * V2 entry point: setup creates the shared signals + ShellPanelApi + command layer + sidebar slot.
- * Signal initial values are restored from KV; the panel is appended at the bottom of sidebar.content.
+ * Signal initial values are restored from KV; the panel is prepended to sidebar.content.
  */
 const mod: PluginModule = {
   id: "opencode-shell-magazine",
@@ -103,9 +103,9 @@ const mod: PluginModule = {
       ),
     })
 
-    // Sidebar panel (append: placed after the other sidebar content)
+    // Sidebar panel (prepend: sits above the existing sidebar content, e.g. Context)
     context.ui.slot({
-      append: "sidebar.content",
+      prepend: "sidebar.content",
       render: (props) => {
         signals.sessionId = String(props.sessionID ?? "")
         return (
