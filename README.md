@@ -78,7 +78,7 @@ Restart the TUI and the **Shell** panel appears at the bottom of the sidebar.
 | Show directory | Off | cwd in the list |
 | Show exit code | On | `exit N` for finished entries |
 | Show subagent commands | On | Include shells from subagent sessions, tagged with a `↳ agent` badge |
-| Footer indicator | On | `● N shell` in the prompt footer while commands are running |
+| Footer indicator | Off | `● N shell` in the prompt footer while commands are running (the host also shows `↓ N shell`) |
 | Border | Off | Draw a border around the panel |
 | Notify on finish | On | System notification when threshold is reached |
 | Notify threshold | 30s | 10s / 30s / 1m / 2m / 5m |
