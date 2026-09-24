@@ -59,7 +59,7 @@ Restart the TUI and the **Shell** panel appears at the bottom of the sidebar.
 
 ## Panel
 
-- Header: `● running`, `✗ failed`, `· total`, `· elapsed time` (right-aligned), plus the plugin version.
+- Header: `● running`, `✗ failed/total`, `elapsed time` (right-aligned), plus the plugin version.
 - Click the title to collapse/expand the panel; click an entry to expand details.
 - Subagent commands carry a `↳ agent` badge (long names are truncated; the full name is in the details).
 - Details include: source (agent/user), subagent, full command, directory, shell, PID, timeout, exit code, output file and output tail.
@@ -79,7 +79,7 @@ Restart the TUI and the **Shell** panel appears at the bottom of the sidebar.
 | Show exit code | On | `exit N` for finished entries |
 | Show subagent commands | On | Include shells from subagent sessions, tagged with a `↳ agent` badge |
 | Footer indicator | Off | `● N shell` in the prompt footer while commands are running (the host also shows `↓ N shell`) |
-| Border | Off | Draw a border around the panel |
+| Border | On | Draw a border around the panel |
 | Notify on finish | On | System notification when threshold is reached |
 | Notify threshold | 30s | 10s / 30s / 1m / 2m / 5m |
 

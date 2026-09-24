@@ -92,7 +92,7 @@ export function ShellPanel(props: {
   const pal = () => {
     const th = props.theme as Record<string, string>
     return {
-      primary: th.primary ?? FALLBACK.primary,
+      primary: desaturateTo(th.primary, MAX_SAT, FALLBACK.primary),
       text: desaturateTo(th.text, MAX_SAT, FALLBACK.text),
       muted: desaturateTo(th.textMuted, MAX_SAT, FALLBACK.muted),
       success: desaturateTo(th.success, MAX_SAT, FALLBACK.success),
@@ -514,9 +514,9 @@ export function ShellPanel(props: {
   const headerSummaryCols = createMemo(() => {
     const h = headerSummary()
     let w = visualWidth(h.running)
-    if (h.failed) w += 1 + visualWidth(h.failed)
-    if (h.total) w += 3 + visualWidth(h.total) // " · "
-    if (h.elapsed) w += 3 + visualWidth(h.elapsed) // " · "
+    if (h.failed) w += (h.running ? 1 : 0) + visualWidth(h.failed)
+    if (h.total) w += (h.failed ? 1 : h.running ? 1 : 0) + visualWidth(h.total)
+    if (h.elapsed) w += 1 + visualWidth(h.elapsed)
     return w
   })
   const versionText = ` v${PLUGIN_VERSION}`
@@ -630,13 +630,15 @@ export function ShellPanel(props: {
             <span style={{ fg: pal().warning }}>{headerSummary().running}</span>
           </Show>
           <Show when={headerSummary().failed}>
-            <span style={{ fg: pal().error }}>{" " + headerSummary().failed}</span>
+            <span style={{ fg: pal().error }}>{(headerSummary().running ? " " : "") + headerSummary().failed}</span>
           </Show>
           <Show when={headerSummary().total}>
-            <span style={{ fg: pal().muted }}>{" \u00b7 " + headerSummary().total}</span>
+            <span style={{ fg: pal().muted }}>
+              {(headerSummary().failed ? "/" : headerSummary().running ? " " : "") + headerSummary().total}
+            </span>
           </Show>
           <Show when={headerSummary().elapsed}>
-            <span style={{ fg: pal().muted }}>{" \u00b7 " + headerSummary().elapsed}</span>
+            <span style={{ fg: pal().muted }}>{" " + headerSummary().elapsed}</span>
           </Show>
         </Show>
       </text>

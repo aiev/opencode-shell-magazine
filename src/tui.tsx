@@ -80,7 +80,7 @@ const mod: PluginModule = {
     const [showEntryCwd, setShowEntryCwd] = createSignal<boolean>((api.kv.get(SETTING_KEYS.showEntryCwd, false) as boolean) === true)
     const [showEntryExit, setShowEntryExit] = createSignal<boolean>((api.kv.get(SETTING_KEYS.showEntryExit, true) as boolean) !== false)
     const [showSubagents, setShowSubagents] = createSignal<boolean>((api.kv.get(SETTING_KEYS.showSubagents, true) as boolean) !== false)
-    const [border, setBorder] = createSignal<boolean>((api.kv.get(SETTING_KEYS.border, false) as boolean) === true)
+    const [border, setBorder] = createSignal<boolean>((api.kv.get(SETTING_KEYS.border, true) as boolean) !== false)
     const [showFooter, setShowFooter] = createSignal<boolean>((api.kv.get(SETTING_KEYS.showFooter, false) as boolean) === true)
     const storedTimeFormat = String(api.kv.get(SETTING_KEYS.timeFormat, "short"))
     const [timeFormat, setTimeFormat] = createSignal<TimeFormat>(
