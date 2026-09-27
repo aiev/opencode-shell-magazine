@@ -9,8 +9,20 @@ import {
   entryFromToolPart,
   normalizeShellStatus,
   scanShellEntries,
+  summarizeEntries,
   tailLines,
 } from "../src/panel/shell-data"
+import type { ShellEntry } from "../src/core/types"
+
+const shellEntry = (over: Partial<ShellEntry>): ShellEntry => ({
+  id: "sh_x",
+  source: "agent",
+  command: "x",
+  status: "exited",
+  startedAt: 0,
+  endedAt: 0,
+  ...over,
+})
 
 test("entryFromShellInfo maps registry fields", () => {
   const e = entryFromShellInfo({
@@ -163,4 +175,33 @@ test("countRunningShells counts only running shells of the session (plus opted-i
   ]
   assert.equal(countRunningShells(shells as never, "ses_root"), 1)
   assert.equal(countRunningShells(shells as never, "ses_root", new Set(["ses_child"])), 2)
+})
+
+test("summarizeEntries splits done/running/failed and sums elapsed time", () => {
+  const entries = [
+    shellEntry({ id: "a", status: "exited", exit: 0, startedAt: 0, endedAt: 1000 }),
+    // Exited without an exit code counts as done.
+    shellEntry({ id: "b", status: "exited", startedAt: 0, endedAt: 500 }),
+    shellEntry({ id: "c", status: "exited", exit: 2, startedAt: 0, endedAt: 300 }),
+    shellEntry({ id: "d", status: "error", startedAt: 0, endedAt: 200 }),
+    shellEntry({ id: "e", status: "timeout", startedAt: 0, endedAt: 100 }),
+    shellEntry({ id: "f", status: "killed", startedAt: 0, endedAt: 100 }),
+    shellEntry({ id: "g", status: "running", startedAt: 4000, endedAt: undefined }),
+    shellEntry({ id: "h", agent: "bud-testrunner", status: "exited", exit: 0, startedAt: 0, endedAt: 1000 }),
+  ]
+  assert.deepEqual(summarizeEntries(entries, 5000, true), {
+    done: 3,
+    running: 1,
+    failed: 4,
+    total: 8,
+    elapsed: 4200,
+  })
+  // Hidden subagent entries are excluded from every count.
+  assert.deepEqual(summarizeEntries(entries, 5000, false), {
+    done: 2,
+    running: 1,
+    failed: 4,
+    total: 7,
+    elapsed: 3200,
+  })
 })

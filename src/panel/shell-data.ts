@@ -197,3 +197,36 @@ export function durationOf(entry: ShellEntry, now: number): number {
   const end = entry.endedAt ?? (entry.status === "running" ? now : entry.startedAt)
   return Math.max(0, end - entry.startedAt)
 }
+
+/** Aggregated status counts shown in the panel header summary. */
+export interface ShellSummary {
+  /** Finished successfully: exited with exit 0 or without a known exit code. */
+  done: number
+  running: number
+  /** error / timeout / killed / exited with a non-zero exit code. */
+  failed: number
+  total: number
+  elapsed: number
+}
+
+/** Summarize entries for the header: done/running/failed counts, total and summed elapsed time. */
+export function summarizeEntries(
+  entries: Iterable<ShellEntry>,
+  now: number,
+  showSubagents: boolean,
+): ShellSummary {
+  let done = 0
+  let running = 0
+  let failed = 0
+  let total = 0
+  let elapsed = 0
+  for (const e of entries) {
+    if (!showSubagents && e.agent !== undefined) continue
+    total++
+    elapsed += durationOf(e, now)
+    if (e.status === "running") running++
+    else if (e.status === "error" || e.status === "timeout" || e.status === "killed" || (e.status === "exited" && e.exit !== undefined && e.exit !== 0)) failed++
+    else done++
+  }
+  return { done, running, failed, total, elapsed }
+}

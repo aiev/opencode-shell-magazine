@@ -59,7 +59,7 @@ Restart the TUI and the **Shell** panel appears at the bottom of the sidebar.
 
 ## Panel
 
-- Header: `● running`, `✗ failed/total`, `elapsed time` (right-aligned), plus the plugin version.
+- Header: right-aligned status dots — `● done` (green), `● running` (yellow) and `● failed` (red) — followed by the elapsed time, plus the plugin version.
 - Click the title to collapse/expand the panel; click an entry to expand details.
 - Subagent commands carry a `↳ agent` badge (long names are truncated; the full name is in the details).
 - Details include: source (agent/user), subagent, full command, directory, shell, PID, timeout, exit code, output file and output tail.

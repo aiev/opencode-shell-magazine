@@ -21,7 +21,7 @@ import { SESSION_DATA_KEY, SETTING_KEYS, updateSessionData } from "../core/kv"
 import type { ShellPanelApi, ShellInfoLike } from "./api"
 import { clearTick } from "./store"
 import { entryKey, findShellEntryKey, mergeShellEntry } from "./entry-map"
-import { collectSubSessions, durationOf, entryFromShellInfo, isTerminal, scanShellEntries, tailLines, type SubSessionRef } from "./shell-data"
+import { collectSubSessions, durationOf, entryFromShellInfo, isTerminal, scanShellEntries, summarizeEntries, tailLines, type SubSessionRef } from "./shell-data"
 import { PLUGIN_VERSION } from "../_version"
 
 /** Entry row prefix: expand arrow + space + status dot + space */
@@ -484,38 +484,23 @@ export function ShellPanel(props: {
   const hiddenBelow = createMemo(() => Math.max(0, sorted().length - max() - scrollOffset()))
   const visibleList = createMemo(() => sorted().slice(scrollOffset(), scrollOffset() + max()))
   const anyEntry = createMemo(() => entryMap().size > 0)
-  const summary = createMemo(() => {
-    const showSub = props.showSubagents()
-    const nowMs = now()
-    let running = 0
-    let failed = 0
-    let total = 0
-    let elapsed = 0
-    for (const e of entryMap().values()) {
-      if (!showSub && e.agent !== undefined) continue
-      total++
-      elapsed += durationOf(e, nowMs)
-      if (e.status === "running") running++
-      else if (e.status === "error" || e.status === "timeout" || e.status === "killed" || (e.status === "exited" && e.exit !== undefined && e.exit !== 0)) failed++
-    }
-    return { running, failed, total, elapsed }
-  })
+  const summary = createMemo(() => summarizeEntries(entryMap().values(), now(), props.showSubagents()))
 
-  // Header summary parts: compact counts, right-aligned like the sibling plugin.
+  // Header summary: colored status dots with counts, right-aligned like the sibling plugin.
   const headerSummary = createMemo(() => {
     const s = summary()
+    const dot = "\u25cf"
     return {
-      running: s.running > 0 ? `\u25cf${s.running}` : "",
-      failed: s.failed > 0 ? `\u2717${s.failed}` : "",
-      total: s.total > 0 ? String(s.total) : "",
+      done: s.total > 0 ? `${dot}${s.done}` : "",
+      running: s.running > 0 ? `${dot}${s.running}` : "",
+      failed: s.failed > 0 ? `${dot}${s.failed}` : "",
       elapsed: s.elapsed > 0 ? fmtDuration(s.elapsed, false, props.timeFormat()) : "",
     }
   })
   const headerSummaryCols = createMemo(() => {
     const h = headerSummary()
-    let w = visualWidth(h.running)
-    if (h.failed) w += (h.running ? 1 : 0) + visualWidth(h.failed)
-    if (h.total) w += (h.failed ? 1 : h.running ? 1 : 0) + visualWidth(h.total)
+    const dots = [h.done, h.running, h.failed].filter(Boolean)
+    let w = dots.reduce((sum, part) => sum + visualWidth(part), 0) + Math.max(0, dots.length - 1)
     if (h.elapsed) w += 1 + visualWidth(h.elapsed)
     return w
   })
@@ -626,15 +611,15 @@ export function ShellPanel(props: {
         </Show>
         <Show when={anyEntry()}>
           <span style={{ fg: pal().muted }}>{" ".repeat(headerSpacer())}</span>
+          <Show when={headerSummary().done}>
+            <span style={{ fg: pal().success }}>{headerSummary().done}</span>
+          </Show>
           <Show when={headerSummary().running}>
-            <span style={{ fg: pal().warning }}>{headerSummary().running}</span>
+            <span style={{ fg: pal().warning }}>{(headerSummary().done ? " " : "") + headerSummary().running}</span>
           </Show>
           <Show when={headerSummary().failed}>
-            <span style={{ fg: pal().error }}>{(headerSummary().running ? " " : "") + headerSummary().failed}</span>
-          </Show>
-          <Show when={headerSummary().total}>
-            <span style={{ fg: pal().muted }}>
-              {(headerSummary().failed ? "/" : headerSummary().running ? " " : "") + headerSummary().total}
+            <span style={{ fg: pal().error }}>
+              {(headerSummary().done || headerSummary().running ? " " : "") + headerSummary().failed}
             </span>
           </Show>
           <Show when={headerSummary().elapsed}>
