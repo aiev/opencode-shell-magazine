@@ -448,8 +448,10 @@ export function ShellPanel(props: {
       if (untrack(expanded) === entryKey(entry)) void loadOutput(entry)
     })
 
-    const clock = setInterval(() => setNow(Date.now()), 500)
-    const reconcile = setInterval(() => void syncRegistry(), 3000)
+    // 1s clock + 5s registry reconcile: the previous 500ms/3s pair kept
+    // repainting panels that were already idle.
+    const clock = setInterval(() => setNow(Date.now()), 1000)
+    const reconcile = setInterval(() => void syncRegistry(), 5000)
     onCleanup(() => {
       offStarted()
       offEnded()

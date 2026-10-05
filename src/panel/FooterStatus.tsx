@@ -41,7 +41,8 @@ export function FooterStatus(props: {
     void props.api.shell.sync().then(update).catch(() => {})
     const offStarted = props.api.shell.onStarted(() => update())
     const offEnded = props.api.shell.onEnded(() => update())
-    const timer = setInterval(() => void props.api.shell.sync().then(update).catch(() => {}), 3000)
+    // 5s fallback poll; start/end events still update immediately.
+    const timer = setInterval(() => void props.api.shell.sync().then(update).catch(() => {}), 5000)
     onCleanup(() => {
       offStarted()
       offEnded()
