@@ -130,6 +130,7 @@ per-session stores.
 
 ```bash
 npm install
+npm run version
 npm run typecheck
 npm run build
 npm test
