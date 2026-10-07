@@ -144,6 +144,7 @@ const mod: PluginModule = {
         />
       ),
     })
+    return () => api.history.flush()
   },
 }
 

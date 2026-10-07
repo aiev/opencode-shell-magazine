@@ -1,5 +1,7 @@
 import type { Context, LocationRef, ShellInfo } from "./context"
 import type { ShellInfoLike, ShellPanelApi, ShellOutputLike } from "../panel/api"
+import { createSessionHistory, legacyHistoryReader } from "../core/history"
+import { createFileTextBlobs, historyBlobsDirectory } from "../core/text-blobs"
 
 const asRecord = (v: unknown): Record<string, any> =>
   v && typeof v === "object" ? (v as Record<string, any>) : {}
@@ -54,6 +56,10 @@ export function createShellApi(context: Context): ShellPanelApi {
   }
 
   const location = (): LocationRef | undefined => context.location
+  const kv = { get: kvGet, set: kvSet, update: kvUpdate }
+  const history = createSessionHistory(kv,
+    createFileTextBlobs(context.options.historyDirectory ?? historyBlobsDirectory(context.app.channel)),
+    legacyHistoryReader(context.app.channel, context.options.legacyHistoryFile))
 
   const toLike = (s: ShellInfo): ShellInfoLike => ({
     id: s.id,
@@ -69,7 +75,8 @@ export function createShellApi(context: Context): ShellPanelApi {
   })
 
   return {
-    kv: { get: kvGet, set: kvSet, update: kvUpdate },
+    kv,
+    history,
     shell: {
       list: () => {
         try { return (context.data.shell.list(location()) ?? []).map(toLike) } catch { return [] }

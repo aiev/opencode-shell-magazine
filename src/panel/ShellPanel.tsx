@@ -17,10 +17,10 @@ import { createT } from "../i18n"
 import type { Lang, SortOrder, ScrollMode, ShellEntry, TimeFormat } from "../core/types"
 import { visualWidth, truncate, fmtDuration } from "../core/format"
 import { rgb, desaturateTo, dimColor, FALLBACK, MAX_SAT } from "../core/color"
-import { SESSION_DATA_KEY, SETTING_KEYS, updateSessionData } from "../core/kv"
+import { SETTING_KEYS } from "../core/kv"
 import type { ShellPanelApi, ShellInfoLike } from "./api"
 import { clearTick } from "./store"
-import { entryKey, findShellEntryKey, mergeShellEntry } from "./entry-map"
+import { entryKey, findShellEntryKey, mergeShellEntry, mergeShellEntries } from "./entry-map"
 import { collectSubSessions, durationOf, entryFromShellInfo, isTerminal, scanShellEntries, summarizeEntries, tailLines, type SubSessionRef } from "./shell-data"
 import { PLUGIN_VERSION } from "../_version"
 
@@ -28,14 +28,6 @@ import { PLUGIN_VERSION } from "../_version"
 const LEFT_PAD = 4
 /** Maximum number of output preview lines */
 const OUTPUT_LINES = 10
-
-interface ShellSessionRecord {
-  ts: number
-  entries: ShellEntry[]
-  scroll: number
-  expanded: string
-  clearedIds?: string[]
-}
 
 export function ShellPanel(props: {
   api: ShellPanelApi
@@ -58,26 +50,16 @@ export function ShellPanel(props: {
 }): JSX.Element {
   const t = createT(() => props.lang())
 
-  // ── Persisted session record (multi-instance safe: updates go through updateSessionData) ──
-  const loadRecord = (): ShellSessionRecord => {
-    try {
-      const raw = props.api.kv.get(SESSION_DATA_KEY, "{}")
-      const data = JSON.parse(String(raw)) as Record<string, ShellSessionRecord>
-      const rec = data[props.sessionId]
-      if (rec && Array.isArray(rec.entries)) return rec
-    } catch {}
-    return { ts: Date.now(), entries: [], scroll: 0, expanded: "" }
-  }
-  const initial = loadRecord()
-  const clearedIds = new Set<string>(initial.clearedIds ?? [])
+  // History is loaded asynchronously, per session; never subscribe to the legacy monolith.
+  const clearedIds = new Set<string>()
   /** Entries already on disk/in history at startup: marked silently, with no notification (only commands started during this mount notify). */
-  const suppressed = new Set<string>(initial.entries.map((e) => entryKey(e)))
+  const suppressed = new Set<string>()
 
   const [entryMap, setEntryMap] = createSignal<Map<string, ShellEntry>>(
-    new Map(initial.entries.map((e) => [entryKey(e), e])),
+    new Map(),
   )
-  const [scrollOffset, setScrollOffset] = createSignal(initial.scroll)
-  const [expanded, setExpanded] = createSignal(initial.expanded)
+  const [scrollOffset, setScrollOffset] = createSignal(0)
+  const [expanded, setExpanded] = createSignal("")
   const [now, setNow] = createSignal(Date.now())
   const [hoveredMoreAbove, setHoveredMoreAbove] = createSignal(false)
   const [hoveredMoreBelow, setHoveredMoreBelow] = createSignal(false)
@@ -87,6 +69,12 @@ export function ShellPanel(props: {
   let persistTimer: ReturnType<typeof setTimeout> | undefined
   let registryReady = false
   let suppressedRegistry = false
+  let historyReady = false
+  let pendingPersist = false
+  let clearAfterLoad = false
+  let disposed = false
+  let generation = 0
+  let activeSessionID = props.sessionId
 
   // ── Palette (Morandi style, theme-adaptive) ──
   const pal = () => {
@@ -107,7 +95,10 @@ export function ShellPanel(props: {
   const gutter = () => (props.border() ? 6 : 0)
   const sep = () => "\u2500".repeat(Math.max(1, panelWidth() - gutter()))
 
-  const firstLine = (s: string) => (s.split("\n")[0] ?? "").trim()
+  const firstLine = (s: string) => {
+    const end = s.indexOf("\n")
+    return s.slice(0, end < 0 ? s.length : end).trim()
+  }
 
   const pulseColor = () => {
     const a = rgb(pal().muted)
@@ -147,18 +138,20 @@ export function ShellPanel(props: {
 
   // ── Persistence ──
   const persist = (entries: Map<string, ShellEntry>) => {
+    if (!historyReady) return
+    const sid = activeSessionID
     const list = [...entries.values()]
-    void Promise.resolve(updateSessionData(props.api.kv, (data) => {
-      data[props.sessionId] = {
-        ts: Date.now(),
-        entries: list,
-        scroll: scrollOffset(),
-        expanded: expanded(),
-        clearedIds: [...clearedIds],
+    void props.api.history.save(sid, {
+      ts: Date.now(), entries: list, scroll: scrollOffset(), expanded: expanded(), clearedIds: [...clearedIds],
+    }).catch(() => {
+      if (!disposed && sid === props.sessionId) {
+        historyReady = false
+        props.api.ui.toast("Shell history could not be saved; original data was left intact.", { variant: "warning" })
       }
-    })).catch(() => {})
+    })
   }
   const queuePersist = () => {
+    if (!historyReady) { pendingPersist = true; return }
     if (persistTimer) clearTimeout(persistTimer)
     persistTimer = setTimeout(() => {
       persistTimer = undefined
@@ -235,7 +228,10 @@ export function ShellPanel(props: {
         const merged = existing ? mergeShellEntry(existing, inc) : inc
         if (merged.status === "running") clearedIds.delete(entryKey(merged))
         if (opts?.fromScan && isTerminal(merged.status)) suppressed.add(entryKey(merged))
-        next.set(k ?? entryKey(merged), merged)
+        const key = entryKey(merged)
+        if (existing === merged && k === key) continue
+        if (k && k !== key) next.delete(k)
+        next.set(key, merged)
         changed = true
       }
       return changed ? next : prev
@@ -305,10 +301,27 @@ export function ShellPanel(props: {
   }
 
   const loadOutput = async (e: ShellEntry) => {
-    if (!e.shellID) return
-    const out = await props.api.shell.readOutput(e.shellID)
-    if (!out) return
-    setOutputCache((prev) => new Map(prev).set(entryKey(e), { text: out.output, truncated: out.truncated }))
+    const current = generation
+    const sid = props.sessionId
+    const key = entryKey(e)
+    const cached = untrack(outputCache).get(key)
+    if (e.status !== "running" && cached && (e.output === undefined || cached.text === e.output)) return
+    let text = e.output
+    let truncated = e.truncated
+    if (e.shellID && (e.status === "running" || text === undefined && !e.hasOutput)) {
+      const out = await props.api.shell.readOutput(e.shellID)
+      if (out) { text = out.output; truncated = out.truncated }
+    }
+    if (text === undefined) text = await props.api.history.output(sid, e.id).catch(() => undefined)
+    if (disposed || generation !== current || text === undefined) return
+    setOutputCache((prev) => {
+      // Bound the on-demand cache; old sessions/large outputs should not accumulate.
+      const next = new Map(prev)
+      next.delete(key)
+      next.set(key, { text, truncated })
+      if (next.size > 8) next.delete(next.keys().next().value!)
+      return next
+    })
   }
 
   /**
@@ -366,8 +379,9 @@ export function ShellPanel(props: {
   }
 
   const syncRegistry = async () => {
+    const current = generation
     const ok = await props.api.shell.sync()
-    if (!ok) return
+    if (!ok || disposed || generation !== current) return
     refreshSubSessions(false)
     const includeSub = props.showSubagents()
     const map = untrack(entryMap)
@@ -396,6 +410,7 @@ export function ShellPanel(props: {
   }
 
   const clearFinished = () => {
+    if (!historyReady) { clearAfterLoad = true; return }
     let removed = 0
     setEntryMap((prev) => {
       const next = new Map(prev)
@@ -415,13 +430,6 @@ export function ShellPanel(props: {
 
   // ── Lifecycle: history scan + live events + heartbeat/reconciliation ──
   onMount(() => {
-    void (async () => {
-      await syncRegistry()
-      applyEntries(scanAll(), { fromScan: true })
-      const exp = untrack(expandedEntry)
-      if (exp?.shellID && exp.status === "running") void loadOutput(exp)
-    })()
-
     /** Tag entries coming from a descendant session with the owning agent. */
     const withAgent = (sid: string, entry: ShellEntry): ShellEntry => {
       if (sid !== props.sessionId) entry.agent = subSessions.get(sid) ?? ""
@@ -448,30 +456,88 @@ export function ShellPanel(props: {
       if (untrack(expanded) === entryKey(entry)) void loadOutput(entry)
     })
 
-    // 1s clock + 5s registry reconcile: the previous 500ms/3s pair kept
-    // repainting panels that were already idle.
-    const clock = setInterval(() => setNow(Date.now()), 1000)
     const reconcile = setInterval(() => void syncRegistry(), 5000)
     onCleanup(() => {
+      disposed = true
       offStarted()
       offEnded()
-      clearInterval(clock)
       clearInterval(reconcile)
-      if (persistTimer) clearTimeout(persistTimer)
+      if (persistTimer) {
+        clearTimeout(persistTimer)
+        persist(untrack(entryMap))
+      }
     })
   })
 
+  // Old async loads must not replace a newly selected session or discard events
+  // received while migration/compression was running.
+  createEffect(() => {
+    const sid = props.sessionId
+    const current = ++generation
+    untrack(() => {
+      if (persistTimer) {
+        clearTimeout(persistTimer)
+        persist(untrack(entryMap))
+      }
+      activeSessionID = sid
+      persistTimer = undefined
+      historyReady = false
+      pendingPersist = false
+      clearAfterLoad = false
+      registryReady = false
+      suppressedRegistry = false
+      clearedIds.clear()
+      suppressed.clear()
+      subSessions.clear()
+      subSessionsAt = 0
+      setEntryMap(new Map())
+      setOutputCache(new Map())
+      setScrollOffset(0)
+      setExpanded("")
+      void (async () => {
+        try {
+          const record = await props.api.history.load(sid)
+          if (disposed || generation !== current) return
+          for (const id of record.clearedIds ?? []) clearedIds.add(id)
+          for (const entry of record.entries) suppressed.add(entryKey(entry))
+          setEntryMap((live) => new Map(mergeShellEntries(record.entries, [...live.values()]).map((entry) => [entryKey(entry), entry])))
+          setScrollOffset(record.scroll)
+          setExpanded(record.expanded)
+          historyReady = true
+          if (clearAfterLoad) clearFinished()
+          if (pendingPersist) { pendingPersist = false; queuePersist() }
+        } catch {
+          if (disposed || generation !== current) return
+          props.api.ui.toast("Shell history could not be loaded; original data was left intact.", { variant: "warning" })
+        }
+        await syncRegistry()
+        if (disposed || generation !== current) return
+        applyEntries(scanAll(), { fromScan: true })
+      })()
+    })
+  })
+
+  // Idle/completed panels do not need a clock or a periodic repaint.
+  createEffect(() => {
+    if (![...entryMap().values()].some((entry) => entry.status === "running")) return
+    setNow(Date.now())
+    const clock = setInterval(() => setNow(Date.now()), 1000)
+    onCleanup(() => clearInterval(clock))
+  })
+
   // "Clear finished" triggered by the slash command.
+  let lastClearTick = untrack(clearTick)
   createEffect(() => {
     const tick = clearTick()
-    if (tick === 0) return
+    if (tick === lastClearTick) return
+    lastClearTick = tick
     untrack(() => clearFinished())
   })
 
-  // Fetch output when a running shell is expanded.
+  // Completed output is fetched from history only when its row is expanded.
   createEffect(() => {
     const e = expandedEntry()
-    if (e?.status === "running" && e.shellID) void loadOutput(e)
+    if (e) void loadOutput(e)
   })
 
   // ── Sorting / paging ──
@@ -548,6 +614,7 @@ export function ShellPanel(props: {
     queuePersist()
   }
   const setScroll = (next: number) => {
+    if (next === scrollOffset()) return
     setScrollOffset(next)
     queuePersist()
   }

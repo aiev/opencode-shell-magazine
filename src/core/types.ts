@@ -30,6 +30,8 @@ export interface ShellEntry {
   startedAt: number
   endedAt?: number
   output?: string
+  /** Output exists in durable history and can be loaded lazily. */
+  hasOutput?: boolean
   truncated?: boolean
   /** Finished, and an attention notification has already been sent. */
   notified?: boolean

@@ -1,6 +1,13 @@
 import type { ShellEntry } from "../core/types"
 import { isTerminal } from "./shell-data"
 
+/** Entries contain scalar values only; avoid serializing large outputs to compare them. */
+export function sameShellEntry(a: ShellEntry, b: ShellEntry): boolean {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]) as Set<keyof ShellEntry>
+  for (const key of keys) if (a[key] !== b[key]) return false
+  return true
+}
+
 /** Entry storage key: shellID first, then id. */
 export function entryKey(entry: ShellEntry): string {
   return entry.shellID ?? entry.id
@@ -26,7 +33,7 @@ export function mergeShellEntry(prev: ShellEntry, next: ShellEntry): ShellEntry 
   const terminalWins = isTerminal(prev.status) && !isTerminal(next.status)
   const primary = terminalWins ? prev : next
   const secondary = terminalWins ? next : prev
-  return {
+  const merged: ShellEntry = {
     ...secondary,
     ...primary,
     id: primary.id || secondary.id,
@@ -42,10 +49,12 @@ export function mergeShellEntry(prev: ShellEntry, next: ShellEntry): ShellEntry 
     startedAt: primary.startedAt || secondary.startedAt,
     endedAt: primary.endedAt ?? secondary.endedAt,
     output: primary.output ?? secondary.output,
+    hasOutput: primary.hasOutput || secondary.hasOutput || primary.output !== undefined || secondary.output !== undefined,
     truncated: primary.truncated ?? secondary.truncated,
-    notified: primary.notified ?? secondary.notified,
+    notified: primary.notified || secondary.notified,
     error: primary.error ?? secondary.error,
   }
+  return sameShellEntry(prev, merged) ? prev : merged
 }
 
 /** Merge new entries into an existing list (dedupe by shell + merge). */

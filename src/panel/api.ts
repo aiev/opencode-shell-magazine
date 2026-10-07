@@ -1,9 +1,11 @@
 import type { KVApi } from "../core/kv"
+import type { SessionHistory } from "../core/history"
 
 /** Panel-facing shell data contract; the V2 adapter implements it so the
  *  component never touches host APIs directly. */
 export interface ShellPanelApi {
   kv: KVApi
+  history: SessionHistory
   shell: {
     /** Shell registry snapshot for the current location (includes foreground/background running commands). */
     list(): ShellInfoLike[]

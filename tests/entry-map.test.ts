@@ -57,3 +57,12 @@ test("mergeShellEntries dedupes by shell and keeps transitions", () => {
   assert.equal(mb.status, "exited")
   assert.equal(mb.endedAt, 9)
 })
+
+test("unchanged registry snapshots retain entry identity", () => {
+  const first = mergeShellEntry(
+    entryFromShellInfo({ id: "sh_a", status: "running", command: "sleep 10", metadata: {}, time: { started: 1 } }),
+    entryFromShellInfo({ id: "sh_a", status: "running", command: "sleep 10", metadata: {}, time: { started: 1 } }),
+  )
+  const second = mergeShellEntry(first, { ...first })
+  assert.equal(second, first)
+})
